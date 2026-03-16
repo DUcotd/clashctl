@@ -1,0 +1,23 @@
+# Binary
+myproxy
+myproxy-*
+*.exe
+
+# Go
+go.sum
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+*.yaml
+!assets/*.tpl
