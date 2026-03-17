@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	"clashctl/internal/config"
 	"clashctl/internal/core"
@@ -61,7 +62,7 @@ func (m WizardModel) executeFull() []ExecStep {
 }
 
 func (m WizardModel) stepCheckURL() ExecStep {
-	if err := system.CheckURLReachable(m.appCfg.SubscriptionURL, 10*1e9); err != nil {
+	if err := system.CheckURLReachable(m.appCfg.SubscriptionURL, 10*time.Second); err != nil {
 		return ExecStep{
 			Label:   "检查订阅 URL 可达性",
 			Success: false,
@@ -222,8 +223,10 @@ func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 		*steps = append(*steps, ExecStep{
 			Label:   "配置 systemd 服务",
 			Success: false,
-			Detail:  err.Error(),
+			Detail:  err.Error() + "\n回退到子进程启动...",
 		})
+		// Fallback to direct process
+		m.stepStartProcess(steps)
 		return
 	}
 
