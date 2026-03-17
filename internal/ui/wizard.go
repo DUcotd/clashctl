@@ -50,6 +50,11 @@ type WizardModel struct {
 	loadingMsg     string
 	switchResult   string
 	switchSuccess  bool
+
+	// Node testing state
+	testing      bool
+	testTotal    int
+	testDone     int
 }
 
 // ExecStep represents a single execution step result.
@@ -160,6 +165,8 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleNodesLoaded(msg)
 	case nodeSwitchedMsg:
 		return m.handleNodeSwitched(msg)
+	case nodeTestedMsg:
+		return m.handleNodeTested(msg)
 	}
 	return m, nil
 }
@@ -362,6 +369,11 @@ func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.nodeIndex = 0
 			return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 		}
+	case "r":
+		// Refresh groups
+		m.loading = true
+		m.loadingMsg = "正在刷新代理组..."
+		return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 	case "esc":
 		m.quitting = true
 		return m, tea.Quit
@@ -370,7 +382,7 @@ func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.loading {
+	if m.loading || m.testing {
 		return m, nil
 	}
 
@@ -390,6 +402,20 @@ func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loadingMsg = "正在切换节点..."
 			return m, tea.Batch(m.spinner.Tick, m.switchNode(m.selectedGroup, nodeName))
 		}
+	case "t":
+		// Test all nodes
+		if len(m.nodes) > 0 {
+			m.testing = true
+			m.testTotal = len(m.nodes)
+			m.testDone = 0
+			m.switchResult = ""
+			return m, tea.Batch(m.spinner.Tick, m.testAllNodes())
+		}
+	case "r":
+		// Refresh nodes
+		m.loading = true
+		m.loadingMsg = "正在刷新节点..."
+		return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 	case "esc":
 		// Back to group list
 		m.screen = ScreenGroupSelect
@@ -498,6 +524,46 @@ func (m WizardModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd
 		m.switchResult = "❌ 切换失败: " + msg.err
 	}
 	return m, nil
+}
+
+func (m WizardModel) handleNodeTested(msg nodeTestedMsg) (tea.Model, tea.Cmd) {
+	for idx, delay := range msg.delays {
+		if idx < len(m.nodes) {
+			m.nodes[idx].Delay = delay
+		}
+	}
+	m.testing = false
+	m.switchResult = fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", len(msg.delays))
+	return m, nil
+}
+
+// testAllNodes tests latency for all nodes concurrently.
+func (m WizardModel) testAllNodes() tea.Cmd {
+	return func() tea.Msg {
+		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
+		delays := make(map[int]int)
+		ch := make(chan struct {
+			index int
+			delay int
+		}, len(m.nodes))
+
+		for i, node := range m.nodes {
+			go func(idx int, name string) {
+				delay := client.TestNode(m.selectedGroup, name)
+				ch <- struct {
+					index int
+					delay int
+				}{idx, delay}
+			}(i, node.Name)
+		}
+
+		for range m.nodes {
+			r := <-ch
+			delays[r.index] = r.delay
+		}
+
+		return nodeTestedMsg{delays: delays}
+	}
 }
 
 // View renders the current screen.

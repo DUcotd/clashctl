@@ -51,6 +51,11 @@ type GroupItem struct {
 // NodeItem represents a proxy node in the TUI list.
 type NodeItem struct {
 	Name     string
-	Delay    int
+	Delay    int  // -1 = timeout, 0 = untested, >0 = delay in ms
 	Selected bool
+}
+
+// nodeTestedMsg is sent when a batch of node tests completes.
+type nodeTestedMsg struct {
+	delays map[int]int // index -> delay
 }

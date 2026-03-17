@@ -4,6 +4,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m WizardModel) viewWelcome() string {
@@ -161,7 +163,7 @@ func (m WizardModel) viewGroupSelect() string {
 	content += BadgeStyle.Render("⚡ url-test") + " 测试  "
 	content += BadgeStyle.Render("🔄 fallback") + " 故障转移"
 	content += "\n"
-	content += HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ Esc 退出")
+	content += HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ r 刷新 │ Esc 退出")
 
 	return BoxStyle.Render(content)
 }
@@ -169,6 +171,11 @@ func (m WizardModel) viewGroupSelect() string {
 func (m WizardModel) viewNodeSelect() string {
 	if m.loading {
 		content := m.spinner.View() + " " + m.loadingMsg
+		return BoxStyle.Render(content)
+	}
+
+	if m.testing {
+		content := m.spinner.View() + fmt.Sprintf(" 正在测试延迟... (%d/%d)", m.testDone, m.testTotal)
 		return BoxStyle.Render(content)
 	}
 
@@ -188,6 +195,12 @@ func (m WizardModel) viewNodeSelect() string {
 
 		line := marker + node.Name
 
+		// Show delay if tested
+		if node.Delay != 0 {
+			delayStr := formatNodeDelay(node.Delay)
+			line += " " + delayStyle(node.Delay).Render(delayStr)
+		}
+
 		if i == m.nodeIndex {
 			content += SelectedStyle.Render("▸ "+strings.TrimSpace(line)) + "\n"
 		} else {
@@ -199,9 +212,41 @@ func (m WizardModel) viewNodeSelect() string {
 		content += "\n" + m.switchResult + "\n"
 	}
 
-	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换节点 │ Esc 返回组列表")
+	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 
 	return BoxStyle.Render(content)
+}
+
+func formatNodeDelay(delay int) string {
+	switch {
+	case delay < 0:
+		return "超时"
+	case delay == 0:
+		return ""
+	case delay < 100:
+		return fmt.Sprintf("%dms ✨", delay)
+	case delay < 300:
+		return fmt.Sprintf("%dms", delay)
+	case delay < 1000:
+		return fmt.Sprintf("%dms ⚠️", delay)
+	default:
+		return fmt.Sprintf("%.1fs 🔴", float64(delay)/1000)
+	}
+}
+
+func delayStyle(delay int) lipgloss.Style {
+	switch {
+	case delay < 0:
+		return DelayBadStyle
+	case delay < 100:
+		return DelayGoodStyle
+	case delay < 300:
+		return DelayOkStyle
+	case delay < 1000:
+		return DelayOkStyle
+	default:
+		return DelayBadStyle
+	}
 }
 
 func groupIcon(t string) string {
