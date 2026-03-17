@@ -1,5 +1,5 @@
 [Unit]
-Description=Mihomo Proxy Service (managed by myproxy)
+Description=Mihomo Proxy Service (managed by clashctl)
 After=network-online.target
 Wants=network-online.target
 

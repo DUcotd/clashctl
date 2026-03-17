@@ -18,8 +18,8 @@ func MyAppDir() (string, error) {
 	return filepath.Join(home, ".config", "clashctl"), nil
 }
 
-// MyProxyConfigPath returns the path to clashctl's own config file.
-func MyProxyConfigPath() (string, error) {
+// ConfigPath returns the path to clashctl's own config file.
+func ConfigPath() (string, error) {
 	dir, err := MyAppDir()
 	if err != nil {
 		return "", err
@@ -46,7 +46,7 @@ func Bootstrap() error {
 
 // LoadOrCreateAppConfig loads the existing AppConfig or returns a default one.
 func LoadOrCreateAppConfig() (*core.AppConfig, error) {
-	path, err := MyProxyConfigPath()
+	path, err := ConfigPath()
 	if err != nil {
 		return nil, err
 	}
