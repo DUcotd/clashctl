@@ -2,6 +2,7 @@
 package mihomo
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,15 +54,21 @@ func InstallMihomo() (string, error) {
 	fmt.Printf("   最新版本: %s\n", release.TagName)
 
 	// Find matching binary
-	downloadURL := findMihomoAsset(release)
+	downloadURL, isGz := findMihomoAsset(release)
 	if downloadURL == "" {
 		return "", fmt.Errorf("未找到适用于 %s/%s 的 Mihomo 二进制文件", runtime.GOOS, runtime.GOARCH)
 	}
 
 	fmt.Printf("   下载中: %s\n", downloadURL)
 
-	if err := downloadBinary(downloadURL, InstallPath); err != nil {
-		return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
+	if isGz {
+		if err := downloadAndDecompressGz(downloadURL, InstallPath); err != nil {
+			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
+		}
+	} else {
+		if err := downloadBinary(downloadURL, InstallPath); err != nil {
+			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
+		}
 	}
 
 	if err := os.Chmod(InstallPath, 0755); err != nil {
@@ -104,9 +111,8 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 }
 
 // findMihomoAsset finds the correct binary asset for the current platform.
-func findMihomoAsset(release *MihomoRelease) string {
-	// Mihomo assets typically named like: mihomo-linux-amd64-v1.18.0.gz
-	// or mihomo-linux-amd64 (no compression)
+// Returns the download URL and whether it's gzip-compressed.
+func findMihomoAsset(release *MihomoRelease) (string, bool) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
@@ -114,21 +120,23 @@ func findMihomoAsset(release *MihomoRelease) string {
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
 		if strings.Contains(name, goos) && strings.Contains(name, goarch) &&
-			!strings.HasSuffix(name, ".gz") && !strings.HasSuffix(name, ".zip") {
-			return asset.BrowserDownloadURL
+			!strings.HasSuffix(name, ".gz") && !strings.HasSuffix(name, ".zip") &&
+			!strings.HasSuffix(name, ".deb") && !strings.HasSuffix(name, ".rpm") &&
+			!strings.HasSuffix(name, ".zst") {
+			return asset.BrowserDownloadURL, false
 		}
 	}
 
-	// Then try .gz
+	// Then try .gz (most common for mihomo releases)
 	for _, asset := range release.Assets {
 		name := strings.ToLower(asset.Name)
 		if strings.Contains(name, goos) && strings.Contains(name, goarch) &&
-			strings.HasSuffix(name, ".gz") {
-			return asset.BrowserDownloadURL
+			strings.HasSuffix(name, ".gz") && !strings.Contains(name, "pkg.tar") {
+			return asset.BrowserDownloadURL, true
 		}
 	}
 
-	return ""
+	return "", false
 }
 
 // downloadBinary downloads a file from url to destPath.
@@ -150,5 +158,33 @@ func downloadBinary(url, destPath string) error {
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
+// downloadAndDecompressGz downloads a gzip-compressed file and decompresses it to destPath.
+func downloadAndDecompressGz(url, destPath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	gzReader, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return fmt.Errorf("创建 gzip reader 失败: %w", err)
+	}
+	defer gzReader.Close()
+
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, gzReader)
 	return err
 }

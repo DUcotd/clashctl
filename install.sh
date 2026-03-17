@@ -55,19 +55,19 @@ else
     MIHOMO_TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//' | sed 's/".*//')
     echo "    版本: $MIHOMO_TAG"
 
-    # Try to find binary asset (uncompressed or .gz)
-    MIHOMO_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*linux-amd64[^"]*"' | grep -v '.gz\|.zip\|.deb\|.rpm' | head -1 | sed 's/.*"browser_download_url": *"//' | sed 's/".*//')
+    # Try .gz first (most common for mihomo releases)
+    MIHOMO_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*linux-amd64[^"]*\.gz"' | grep -v 'pkg.tar' | head -1 | sed 's/.*"browser_download_url": *"//' | sed 's/".*//')
 
-    if [ -z "$MIHOMO_URL" ]; then
-        # Try .gz
-        MIHOMO_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*linux-amd64[^"]*\.gz"' | head -1 | sed 's/.*"browser_download_url": *"//' | sed 's/".*//')
-        if [ -n "$MIHOMO_URL" ]; then
-            echo "    下载中 (gz)..."
-            curl -sL "$MIHOMO_URL" | gzip -d > "$INSTALL_DIR/mihomo"
-        fi
+    if [ -n "$MIHOMO_URL" ]; then
+        echo "    下载中 (gz)..."
+        curl -sL "$MIHOMO_URL" | gzip -d > "$INSTALL_DIR/mihomo"
     else
-        echo "    下载中..."
-        curl -sL "$MIHOMO_URL" -o "$INSTALL_DIR/mihomo"
+        # Try uncompressed
+        MIHOMO_URL=$(echo "$RELEASE_JSON" | grep -o '"browser_download_url": *"[^"]*linux-amd64[^"]*"' | grep -v '.gz\|.zip\|.deb\|.rpm\|.zst' | head -1 | sed 's/.*"browser_download_url": *"//' | sed 's/".*//')
+        if [ -n "$MIHOMO_URL" ]; then
+            echo "    下载中..."
+            curl -sL "$MIHOMO_URL" -o "$INSTALL_DIR/mihomo"
+        fi
     fi
 
     if [ -f "$INSTALL_DIR/mihomo" ]; then
