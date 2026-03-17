@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/core"
+	"clashctl/internal/core"
 )
 
 var (
@@ -22,8 +22,8 @@ var exportCmd = &cobra.Command{
 	Long: `根据指定的参数生成 Mihomo 配置文件并导出。
 
 示例：
-  myproxy export -u https://example.com/sub -o config.yaml
-  myproxy export --url https://example.com/sub --mode mixed --output config.yaml`,
+  clashctl export -u https://example.com/sub -o config.yaml
+  clashctl export --url https://example.com/sub --mode mixed --output config.yaml`,
 	RunE: runExport,
 }
 

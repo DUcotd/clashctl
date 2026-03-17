@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/mihomo"
+	"clashctl/internal/mihomo"
 )
 
 var startCmd = &cobra.Command{
@@ -23,14 +23,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 正在启动 Mihomo...")
 
 	// Try systemd first
-	active, _ := mihomo.ServiceStatus("myproxy-mihomo")
+	active, _ := mihomo.ServiceStatus("clashctl-mihomo")
 	if active {
 		fmt.Println("⚠️  Mihomo 服务已在运行中")
 		return nil
 	}
 
 	// Try systemctl start
-	if err := mihomo.StartService("myproxy-mihomo"); err == nil {
+	if err := mihomo.StartService("clashctl-mihomo"); err == nil {
 		fmt.Println("✅ 通过 systemd 启动成功")
 		return nil
 	}

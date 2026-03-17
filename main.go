@@ -1,6 +1,6 @@
 package main
 
-import "myproxy/cmd"
+import "clashctl/cmd"
 
 func main() {
 	cmd.Execute()

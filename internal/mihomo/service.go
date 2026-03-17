@@ -6,11 +6,11 @@ import (
 	"os"
 	"text/template"
 
-	"myproxy/internal/system"
+	"clashctl/internal/system"
 )
 
 const serviceTemplate = `[Unit]
-Description=Mihomo Proxy Service (managed by myproxy)
+Description=Mihomo Proxy Service (managed by clashctl)
 After=network-online.target
 Wants=network-online.target
 

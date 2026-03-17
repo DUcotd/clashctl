@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/mihomo"
+	"clashctl/internal/mihomo"
 )
 
 var stopCmd = &cobra.Command{
@@ -22,7 +22,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	fmt.Println("🛑 正在停止 Mihomo...")
 
 	// Try systemd first
-	if err := mihomo.StopService("myproxy-mihomo"); err == nil {
+	if err := mihomo.StopService("clashctl-mihomo"); err == nil {
 		fmt.Println("✅ 已通过 systemd 停止")
 		return nil
 	}

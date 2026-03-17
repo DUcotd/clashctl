@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/system"
+	"clashctl/internal/system"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "检查并更新 myproxy",
+	Short: "检查并更新 clashctl",
 	Long:  `检查 GitHub Releases 获取最新版本，如有更新则自动下载替换。`,
 	RunE:  runUpdate,
 }
@@ -62,7 +62,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\n🆕 发现新版本: %s → %s\n", currentVer, latestTag)
 
 	// Find the right binary for current platform
-	binaryName := fmt.Sprintf("myproxy-%s-%s", runtime.GOOS, runtime.GOARCH)
+	binaryName := fmt.Sprintf("clashctl-%s-%s", runtime.GOOS, runtime.GOARCH)
 	downloadURL := ""
 
 	for _, asset := range release.Assets {
@@ -87,7 +87,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Check write permission
 	if !system.IsRoot() {
 		fmt.Println("\n⚠️  更新需要 root 权限")
-		fmt.Println("请使用 sudo myproxy update")
+		fmt.Println("请使用 sudo clashctl update")
 		return fmt.Errorf("权限不足")
 	}
 
@@ -125,7 +125,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\n✅ 更新完成！\n")
 	fmt.Printf("   %s → %s\n", currentVer, latestTag)
-	fmt.Println("\n运行 'myproxy --help' 查看新版本功能")
+	fmt.Println("\n运行 'clashctl --help' 查看新版本功能")
 
 	return nil
 }

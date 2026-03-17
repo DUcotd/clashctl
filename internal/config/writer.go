@@ -1,10 +1,10 @@
-// Package config provides myproxy-specific config save/load operations.
+// Package config provides clashctl-specific config save/load operations.
 package config
 
 import (
 	"fmt"
 
-	"myproxy/internal/core"
+	"clashctl/internal/core"
 )
 
 // SaveMihomoConfig renders a MihomoConfig to YAML and writes it to the given path.

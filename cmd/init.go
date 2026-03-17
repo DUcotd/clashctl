@@ -6,8 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/app"
-	"myproxy/internal/ui"
+	"clashctl/internal/app"
+	"clashctl/internal/ui"
 )
 
 var initCmd = &cobra.Command{
@@ -22,7 +22,7 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	// Ensure myproxy app directory exists
+	// Ensure clashctl app directory exists
 	if err := app.Bootstrap(); err != nil {
 		return err
 	}

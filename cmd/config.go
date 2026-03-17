@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/core"
+	"clashctl/internal/core"
 )
 
 var configCmd = &cobra.Command{

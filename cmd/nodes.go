@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/core"
-	"myproxy/internal/mihomo"
+	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
 )
 
 var nodesCmd = &cobra.Command{
@@ -116,7 +116,7 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	fmt.Println("使用 'myproxy nodes list <组名>' 查看详细节点列表")
+	fmt.Println("使用 'clashctl nodes list <组名>' 查看详细节点列表")
 
 	return nil
 }

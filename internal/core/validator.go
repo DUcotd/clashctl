@@ -1,4 +1,4 @@
-// Package core provides validation logic for myproxy configurations.
+// Package core provides validation logic for clashctl configurations.
 package core
 
 import (

@@ -4,10 +4,10 @@ package ui
 import (
 	"fmt"
 
-	"myproxy/internal/config"
-	"myproxy/internal/core"
-	"myproxy/internal/mihomo"
-	"myproxy/internal/system"
+	"clashctl/internal/config"
+	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 // executeFull performs the full configuration and startup pipeline.
@@ -246,7 +246,7 @@ func (m WizardModel) stepCheckController(steps *[]ExecStep) {
 		*steps = append(*steps, ExecStep{
 			Label:   "检查 Controller API",
 			Success: false,
-			Detail:  err.Error() + "\nMihomo 可能还在启动中，请稍后用 'myproxy status' 检查",
+			Detail:  err.Error() + "\nMihomo 可能还在启动中，请稍后用 'clashctl status' 检查",
 		})
 		return
 	}

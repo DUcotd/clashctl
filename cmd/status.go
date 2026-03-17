@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/core"
-	"myproxy/internal/mihomo"
+	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
 )
 
 var statusCmd = &cobra.Command{
@@ -25,7 +25,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Check systemd service
-	active, _ := mihomo.ServiceStatus("myproxy-mihomo")
+	active, _ := mihomo.ServiceStatus("clashctl-mihomo")
 	if active {
 		fmt.Println("  服务状态: ✅ 运行中 (systemd)")
 	} else {

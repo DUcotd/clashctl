@@ -1,9 +1,9 @@
-# myproxy 开发文档
+# clashctl 开发文档
 
 ## 项目结构
 
 ```
-myproxy/
+clashctl/
 ├── main.go                 # 入口
 ├── cmd/                    # Cobra 命令定义
 │   ├── root.go
@@ -45,7 +45,7 @@ myproxy/
 │       ├── styles.go       # lipgloss 样式
 │       └── state.go        # 状态定义
 ├── assets/
-│   └── myproxy.service.tpl # systemd 服务模板
+│   └── clashctl.service.tpl # systemd 服务模板
 └── docs/
     ├── USER_GUIDE.md
     └── DEVELOPMENT.md
@@ -62,7 +62,7 @@ myproxy/
 ## 构建
 
 ```bash
-go build -o myproxy .
+go build -o clashctl .
 ```
 
 ## 测试

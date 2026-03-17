@@ -17,7 +17,7 @@ func DirExists(path string) bool {
 
 // DirWritable checks if a directory is writable by creating and removing a temp file.
 func DirWritable(path string) error {
-	testFile := fmt.Sprintf("%s/.myproxy_write_test", path)
+	testFile := fmt.Sprintf("%s/.clashctl_write_test", path)
 	f, err := os.Create(testFile)
 	if err != nil {
 		return fmt.Errorf("directory %s is not writable: %w", path, err)

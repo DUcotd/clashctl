@@ -1,4 +1,4 @@
-// Package config handles reading and writing myproxy configuration files.
+// Package config handles reading and writing clashctl configuration files.
 package config
 
 import (

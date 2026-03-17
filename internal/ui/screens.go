@@ -5,7 +5,7 @@ import "fmt"
 
 func (m WizardModel) viewWelcome() string {
 	content := `
-欢迎使用 myproxy — Mihomo TUN 交互式配置工具
+欢迎使用 clashctl — Mihomo TUN 交互式配置工具
 
 这个向导将帮助你：
 
@@ -106,8 +106,8 @@ func (m WizardModel) viewResult() string {
 	content += "\n"
 	if allSuccess {
 		content += SuccessStyle.Render("🎉 配置完成！Mihomo 已配置就绪。") + "\n"
-		content += InfoStyle.Render("使用 'myproxy start' 启动服务") + "\n"
-		content += InfoStyle.Render("使用 'myproxy doctor' 检查环境") + "\n"
+		content += InfoStyle.Render("使用 'clashctl start' 启动服务") + "\n"
+		content += InfoStyle.Render("使用 'clashctl doctor' 检查环境") + "\n"
 	} else {
 		content += ErrorStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。") + "\n"
 	}

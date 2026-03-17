@@ -1,4 +1,4 @@
-// Package core defines the data models and default configurations for myproxy.
+// Package core defines the data models and default configurations for clashctl.
 package core
 
 // AppConfig holds the user-facing configuration collected from the wizard or CLI flags.

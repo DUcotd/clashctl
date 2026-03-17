@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
 
-	"myproxy/internal/core"
+	"clashctl/internal/core"
 )
 
 // WizardModel is the main TUI state.
@@ -275,7 +275,7 @@ func (m WizardModel) View() string {
 	var b strings.Builder
 
 	// Title
-	b.WriteString(TitleStyle.Render("🧙 myproxy 配置向导"))
+	b.WriteString(TitleStyle.Render("🧙 clashctl 配置向导"))
 	b.WriteString("\n")
 
 	// Step indicator (except welcome)

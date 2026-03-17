@@ -6,7 +6,7 @@ import (
 	"os"
 	"syscall"
 
-	"myproxy/internal/system"
+	"clashctl/internal/system"
 )
 
 // CheckResult represents a single diagnostic check.
@@ -79,7 +79,7 @@ func checkConfigDir(configDir string) CheckResult {
 			Name:    "配置目录",
 			Passed:  false,
 			Problem: fmt.Sprintf("目录 %s 不存在", configDir),
-			Suggest: "运行 myproxy init 或手动创建目录",
+			Suggest: "运行 clashctl init 或手动创建目录",
 		}
 	}
 	if err := system.DirWritable(configDir); err != nil {
@@ -216,7 +216,7 @@ func checkMihomoRunning(controllerAddr string) CheckResult {
 			Name:    "Mihomo 运行状态",
 			Passed:  false,
 			Problem: "Mihomo 未运行或 Controller API 不可达",
-			Suggest: "使用 'myproxy start' 启动 Mihomo",
+			Suggest: "使用 'clashctl start' 启动 Mihomo",
 		}
 	}
 

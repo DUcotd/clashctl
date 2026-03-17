@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"myproxy/internal/core"
+	"clashctl/internal/core"
 )
 
 func TestBackupFile(t *testing.T) {

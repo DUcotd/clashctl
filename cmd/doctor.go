@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"myproxy/internal/core"
-	"myproxy/internal/mihomo"
+	"clashctl/internal/core"
+	"clashctl/internal/mihomo"
 )
 
 var doctorTunMode bool
