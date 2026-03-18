@@ -191,14 +191,33 @@ func TestRenderYAML(t *testing.T) {
 		"https://example.com/sub",
 		"proxy-groups:",
 		"name: PROXY",
-		"tun:",
-		"enable: true",
 		"dns:",
 		"enhanced-mode: redir-host",
 		"rules:",
 		"MATCH,PROXY",
 		"DOMAIN-SUFFIX,ubuntu.com,DIRECT",
 		"DOMAIN-SUFFIX,github.com,DIRECT",
+	}
+
+	// TUN mode should include tun config
+	tunCfg := BuildMihomoConfig(&AppConfig{
+		SubscriptionURL: "https://example.com/sub",
+		Mode:            "tun",
+		MixedPort:       7890,
+		ConfigDir:       "/etc/mihomo",
+		ControllerAddr:  "127.0.0.1:9090",
+		ProviderPath:    "./providers/airport.yaml",
+	})
+	tunData, err := RenderYAML(tunCfg)
+	if err != nil {
+		t.Fatalf("RenderYAML for TUN config failed: %v", err)
+	}
+	tunYAML := string(tunData)
+	if !contains(tunYAML, "tun:") {
+		t.Error("TUN config YAML missing 'tun:' section")
+	}
+	if !contains(tunYAML, "enable: true") {
+		t.Error("TUN config YAML missing 'enable: true'")
 	}
 
 	for _, check := range checks {
@@ -211,8 +230,8 @@ func TestRenderYAML(t *testing.T) {
 func TestDefaultAppConfig(t *testing.T) {
 	cfg := DefaultAppConfig()
 
-	if cfg.Mode != "tun" {
-		t.Errorf("default mode = %q, want tun", cfg.Mode)
+	if cfg.Mode != "mixed" {
+		t.Errorf("default mode = %q, want mixed", cfg.Mode)
 	}
 	if cfg.MixedPort != 7890 {
 		t.Errorf("default mixed port = %d, want 7890", cfg.MixedPort)

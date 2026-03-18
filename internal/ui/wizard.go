@@ -146,17 +146,15 @@ func NewWizard() WizardModel {
 	s.Spinner = spinner.Dot
 	s.Style = SpinnerStyle
 
-	// Auto-detect TUN capability and fall back to mixed-port if unavailable
+	// Auto-detect TUN capability — default to mixed-port for reliability
 	appCfg := core.DefaultAppConfig()
-	tunAvailable := mihomo.CanUseTUN()
-	if !tunAvailable {
-		appCfg.Mode = "mixed"
-	}
+	// Default to mixed-port (modeIndex=1) unless user explicitly wants TUN
+	appCfg.Mode = "mixed"
 
 	return WizardModel{
 		screen:         ScreenWelcome,
 		appCfg:         appCfg,
-		modeIndex:      boolToInt(!tunAvailable), // 0 = TUN, 1 = mixed-port
+		modeIndex:      1, // default to mixed-port for reliability
 		urlInput:       urlInput,
 		advancedFields: fields,
 		advancedInputs: advInputs,

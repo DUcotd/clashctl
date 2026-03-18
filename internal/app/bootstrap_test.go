@@ -50,8 +50,8 @@ func TestLoadOrCreateAppConfig(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("LoadOrCreateAppConfig() returned nil")
 	}
-	if cfg.Mode != "tun" && cfg.Mode != "mixed" {
-		t.Errorf("default mode = %q, want tun or mixed", cfg.Mode)
+	if cfg.Mode != "mixed" && cfg.Mode != "tun" {
+		t.Errorf("default mode = %q, want mixed or tun", cfg.Mode)
 	}
 }
 

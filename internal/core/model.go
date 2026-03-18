@@ -17,7 +17,7 @@ type AppConfig struct {
 // DefaultAppConfig returns an AppConfig with sensible defaults.
 func DefaultAppConfig() *AppConfig {
 	return &AppConfig{
-		Mode:              "tun",
+		Mode:              "mixed",
 		ConfigDir:         "/etc/mihomo",
 		ControllerAddr:    "127.0.0.1:9090",
 		MixedPort:         7890,

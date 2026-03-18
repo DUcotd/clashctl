@@ -40,7 +40,7 @@ func (m WizardModel) viewSubscription() string {
 }
 
 func (m WizardModel) viewMode() string {
-	options := []string{"TUN 模式（推荐，全局代理）", "mixed-port 模式（兼容，本地端口代理）"}
+	options := []string{"TUN 模式（全局代理，需 root）", "mixed-port 模式（推荐，兼容性好）"}
 
 	content := HeaderStyle.Render("选择代理运行模式") + "\n\n"
 
@@ -52,12 +52,11 @@ func (m WizardModel) viewMode() string {
 		}
 	}
 
-	content += "\n" + InfoStyle.Render("TUN 模式：接管系统全部流量，无需配置应用代理")
-	content += "\n" + InfoStyle.Render("mixed-port 模式：提供本地代理端口，需手动配置应用")
+	content += "\n" + InfoStyle.Render("mixed-port 模式：提供本地代理端口 7890，兼容性最好")
+	content += "\n" + InfoStyle.Render("TUN 模式：接管全部流量，但 DNS 劫持在部分环境有兼容问题")
 
-	// Show warning if TUN was auto-detected as unavailable
-	if m.modeIndex == 1 && m.appCfg.Mode == "mixed" {
-		content += "\n\n" + WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，已自动切换到 mixed-port 模式")
+	if !mihomo.CanUseTUN() {
+		content += "\n\n" + WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用")
 	}
 
 	content += "\n\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 确认 │ Esc 返回")
