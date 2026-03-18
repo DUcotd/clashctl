@@ -99,28 +99,6 @@ download_file() {
     return 1
 }
 
-# ─── Download to stdout with retry ───
-download_stdout() {
-    local url="$1"
-    local attempt=0
-    while [ "$attempt" -lt "$MAX_RETRIES" ]; do
-        if curl -sfL --connect-timeout "$TIMEOUT" --retry 2 "$url"; then
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-            warn "请求失败，重试 ($attempt/$MAX_RETRIES)..."
-            sleep 2
-        fi
-    done
-    return 1
-}
-
-# ─── JSON field extractor ───
-json_val() {
-    python3 -c "import sys,json; d=json.load(sys.stdin); print(d$1)"
-}
-
 # ─── Install clashctl ───
 install_clashctl() {
     echo ""
@@ -135,15 +113,15 @@ install_clashctl() {
         return
     fi
 
-    # Resolve version
+    # Resolve version - use temp file to avoid pipefail + set -u issues
     if [ "$CLASHCTL_VERSION" = "latest" ]; then
         info "获取最新版本..."
-        CLASHCTL_VERSION="latest"
-        local ver
-        ver="$(download_stdout "https://api.github.com/repos/$CLASHCTL_REPO/releases/latest" 2>/dev/null | json_val "['tag_name']" 2>/dev/null)" || true
-        if [ -n "${ver:-}" ]; then
-            CLASHCTL_VERSION="$ver"
+        local ver_tmp
+        ver_tmp="$(mktemp)"
+        if curl -sfL --connect-timeout "$TIMEOUT" "https://api.github.com/repos/$CLASHCTL_REPO/releases/latest" -o "$ver_tmp" 2>/dev/null; then
+            CLASHCTL_VERSION="$(python3 -c "import json; print(json.load(open('$ver_tmp'))['tag_name'])" 2>/dev/null)" || CLASHCTL_VERSION="latest"
         fi
+        rm -f "$ver_tmp"
     fi
 
     local url
@@ -191,15 +169,14 @@ install_mihomo() {
             || die "无法获取 Mihomo $MIHOMO_VERSION"
     fi
 
-    release_json="$(cat "$tmpfile")"
-    MIHOMO_VERSION="$(echo "$release_json" | json_val "['tag_name']")"
+    MIHOMO_VERSION="$(python3 -c "import json; print(json.load(open('$tmpfile'))['tag_name'])")"
     info "版本: ${DIM}$MIHOMO_VERSION${RESET}"
 
     # Find download URL via python3
     local mihomo_url
-    mihomo_url="$(echo "$release_json" | python3 -c "
-import sys, json
-assets = json.load(sys.stdin).get('assets', [])
+    mihomo_url="$(python3 -c "
+import json
+assets = json.load(open('$tmpfile')).get('assets', [])
 arch = '$GOARCH'
 skip = ('.deb', '.rpm', '.zst', '.pkg.tar', '.txt', '.sig')
 cands = [a for a in assets if arch in a['name'] and not any(s in a['name'] for s in skip)]
