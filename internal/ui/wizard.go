@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
@@ -36,33 +37,37 @@ type WizardModel struct {
 	modeIndex int // 0 = TUN, 1 = mixed-port
 
 	// Advanced settings
-	advancedIndex   int
-	advancedFields  []string
-	advancedInputs  []textinput.Model
+	advancedIndex  int
+	advancedFields []string
+	advancedInputs []textinput.Model
 
 	// Result
-	execSteps   []ExecStep
-	execError   string
+	execSteps []ExecStep
+	execError string
 
 	// Controller availability (set after execution)
 	controllerAvailable bool
 
 	// Node selection state
-	spinner        spinner.Model
-	groups         []GroupItem
-	groupIndex     int
-	nodes          []NodeItem
-	nodeIndex      int
-	selectedGroup  string
-	loading        bool
-	loadingMsg     string
-	switchResult   string
-	switchSuccess  bool
+	spinner       spinner.Model
+	groups        []GroupItem
+	groupIndex    int
+	nodes         []NodeItem
+	nodeIndex     int
+	selectedGroup string
+	loading       bool
+	loadingMsg    string
+	switchResult  string
+	switchSuccess bool
 
 	// Node testing state
-	testing      bool
-	testTotal    int
-	testDone     int
+	testing   bool
+	testTotal int
+	testDone  int
+
+	// Viewport for scrollable lists
+	vp       viewport.Model
+	vpReady  bool
 }
 
 // ExecStep represents a single execution step result.
@@ -170,6 +175,31 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Initialize or update viewport for scrollable lists
+		headerHeight := 5 // title + step indicator + padding
+		footerHeight := 3 // help text + padding
+		vpHeight := msg.Height - headerHeight - footerHeight
+		if vpHeight < 5 {
+			vpHeight = 5
+		}
+
+		if !m.vpReady {
+			m.vp = viewport.New(msg.Width, vpHeight)
+			m.vpReady = true
+		} else {
+			m.vp.Width = msg.Width
+			m.vp.Height = vpHeight
+		}
+
+		return m, nil
+	case tea.MouseMsg:
+		// Forward mouse events (scroll wheel) to viewport
+		if m.vpReady && (m.screen == ScreenGroupSelect || m.screen == ScreenNodeSelect) {
+			var cmd tea.Cmd
+			m.vp, cmd = m.vp.Update(msg)
+			return m, cmd
+		}
 		return m, nil
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -398,6 +428,20 @@ func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.groupIndex < len(m.groups)-1 {
 			m.groupIndex++
 		}
+	case "pgup":
+		m.groupIndex -= m.vp.Height
+		if m.groupIndex < 0 {
+			m.groupIndex = 0
+		}
+	case "pgdown":
+		m.groupIndex += m.vp.Height
+		if m.groupIndex >= len(m.groups) {
+			m.groupIndex = len(m.groups) - 1
+		}
+	case "home":
+		m.groupIndex = 0
+	case "end":
+		m.groupIndex = len(m.groups) - 1
 	case "enter":
 		if len(m.groups) > 0 {
 			m.selectedGroup = m.groups[m.groupIndex].Name
@@ -432,6 +476,20 @@ func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.nodeIndex < len(m.nodes)-1 {
 			m.nodeIndex++
 		}
+	case "pgup":
+		m.nodeIndex -= m.vp.Height
+		if m.nodeIndex < 0 {
+			m.nodeIndex = 0
+		}
+	case "pgdown":
+		m.nodeIndex += m.vp.Height
+		if m.nodeIndex >= len(m.nodes) {
+			m.nodeIndex = len(m.nodes) - 1
+		}
+	case "home":
+		m.nodeIndex = 0
+	case "end":
+		m.nodeIndex = len(m.nodes) - 1
 	case "enter":
 		if len(m.nodes) > 0 {
 			nodeName := m.nodes[m.nodeIndex].Name

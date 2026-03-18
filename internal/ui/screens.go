@@ -164,31 +164,44 @@ func (m WizardModel) viewGroupSelect() string {
 		return BoxStyle.Render(content)
 	}
 
-	content := HeaderStyle.Render("选择代理组") + "\n\n"
-
+	// Build full list content
+	var list strings.Builder
 	for i, g := range m.groups {
 		typeIcon := groupIcon(g.Type)
 		line := fmt.Sprintf("%s %s", typeIcon, g.Name)
-
 		if g.Now != "" {
 			line += InfoStyle.Render(fmt.Sprintf(" → %s", g.Now))
 		}
 		line += InfoStyle.Render(fmt.Sprintf(" (%d)", g.NodeCount))
 
 		if i == m.groupIndex {
-			content += SelectedStyle.Render("▸ "+line) + "\n"
+			list.WriteString(SelectedStyle.Render("▸ " + line) + "\n")
 		} else {
-			content += UnselectedStyle.Render("  "+line) + "\n"
+			list.WriteString(UnselectedStyle.Render("  " + line) + "\n")
 		}
 	}
 
-	content += "\n" + BadgeStyle.Render("🔀 select") + " 选择  "
-	content += BadgeStyle.Render("⚡ url-test") + " 测试  "
-	content += BadgeStyle.Render("🔄 fallback") + " 故障转移"
-	content += "\n"
-	content += HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ r 刷新 │ Esc 退出")
+	if m.vpReady {
+		m.vp.SetContent(list.String())
+		// Auto-scroll to keep selected item visible
+		selectedY := m.groupIndex
+		if selectedY < m.vp.YOffset {
+			m.vp.SetYOffset(selectedY)
+		} else if selectedY >= m.vp.YOffset+m.vp.Height {
+			m.vp.SetYOffset(selectedY - m.vp.Height + 1)
+		}
 
-	return BoxStyle.Render(content)
+		header := HeaderStyle.Render(fmt.Sprintf("选择代理组 (%d)", len(m.groups)))
+		legend := BadgeStyle.Render("🔀 select") + " 选择  " +
+			BadgeStyle.Render("⚡ url-test") + " 测试  " +
+			BadgeStyle.Render("🔄 fallback") + " 故障转移"
+		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ r 刷新 │ Esc 退出")
+
+		return BoxStyle.Render(header + "\n\n" + m.vp.View() + "\n" + legend + "\n" + footer)
+	}
+
+	// Fallback without viewport
+	return BoxStyle.Render(HeaderStyle.Render("选择代理组") + "\n\n" + list.String())
 }
 
 func (m WizardModel) viewNodeSelect() string {
@@ -202,14 +215,15 @@ func (m WizardModel) viewNodeSelect() string {
 		return BoxStyle.Render(content)
 	}
 
-	content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n"
-
 	if len(m.nodes) == 0 {
+		content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n"
 		content += WarningStyle.Render("该组没有可用节点") + "\n"
 		content += HelpStyle.Render("按 Esc 返回")
 		return BoxStyle.Render(content)
 	}
 
+	// Build full node list
+	var list strings.Builder
 	for i, node := range m.nodes {
 		marker := "  "
 		if node.Selected {
@@ -218,25 +232,46 @@ func (m WizardModel) viewNodeSelect() string {
 
 		line := marker + node.Name
 
-		// Show delay if tested (using shared FormatDelay from mihomo package)
 		if node.Delay != 0 {
 			delayStr := mihomo.FormatDelay(node.Delay)
 			line += " " + delayStyle(node.Delay).Render(delayStr)
 		}
 
 		if i == m.nodeIndex {
-			content += SelectedStyle.Render("▸ "+strings.TrimSpace(line)) + "\n"
+			list.WriteString(SelectedStyle.Render("▸ " + strings.TrimSpace(line)) + "\n")
 		} else {
-			content += UnselectedStyle.Render("  "+strings.TrimSpace(line)) + "\n"
+			list.WriteString(UnselectedStyle.Render("  " + strings.TrimSpace(line)) + "\n")
 		}
 	}
 
+	if m.vpReady {
+		m.vp.SetContent(list.String())
+		// Auto-scroll to keep selected item visible
+		selectedY := m.nodeIndex
+		if selectedY < m.vp.YOffset {
+			m.vp.SetYOffset(selectedY)
+		} else if selectedY >= m.vp.YOffset+m.vp.Height {
+			m.vp.SetYOffset(selectedY - m.vp.Height + 1)
+		}
+
+		header := HeaderStyle.Render(fmt.Sprintf("代理组: %s (%d 节点)", m.selectedGroup, len(m.nodes)))
+
+		resultLine := ""
+		if m.switchResult != "" {
+			resultLine = "\n" + m.switchResult
+		}
+
+		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
+
+		return BoxStyle.Render(header + "\n\n" + m.vp.View() + resultLine + "\n" + footer)
+	}
+
+	// Fallback without viewport
+	content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n" + list.String()
 	if m.switchResult != "" {
 		content += "\n" + m.switchResult + "\n"
 	}
-
 	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
-
 	return BoxStyle.Render(content)
 }
 
