@@ -175,6 +175,11 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+	case executionDoneMsg:
+		m.execSteps = msg.steps
+		m.controllerAvailable = msg.controllerReady
+		m.screen = ScreenResult
+		return m, nil
 	case groupsLoadedMsg:
 		return m.handleGroupsLoaded(msg)
 	case nodesLoadedMsg:
@@ -205,6 +210,9 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateAdvanced(msg)
 	case ScreenPreview:
 		return m.updatePreview(msg)
+	case ScreenExecution:
+		// Block all keys during execution — just wait
+		return m, nil
 	case ScreenResult:
 		return m.updateResult(msg)
 	case ScreenGroupSelect:
@@ -327,14 +335,27 @@ func (m *WizardModel) collectAdvancedValues() {
 func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		m.execSteps = m.executeFull()
-		m.screen = ScreenResult
-		return m, nil
+		m.screen = ScreenExecution
+		return m, tea.Batch(m.spinner.Tick, m.runExecution())
 	case "esc":
 		m.screen = ScreenAdvanced
 		return m, nil
 	}
 	return m, nil
+}
+
+// runExecution runs executeFull as an async background command.
+func (m WizardModel) runExecution() tea.Cmd {
+	return func() tea.Msg {
+		steps := m.executeFull()
+		// Check if controller is available by looking at the last step
+		controllerReady := false
+		if len(steps) > 0 {
+			last := steps[len(steps)-1]
+			controllerReady = last.Success && last.Label == "检查 Controller API"
+		}
+		return executionDoneMsg{steps: steps, controllerReady: controllerReady}
+	}
 }
 
 func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -617,6 +638,8 @@ func (m WizardModel) View() string {
 		b.WriteString(m.viewAdvanced())
 	case ScreenPreview:
 		b.WriteString(m.viewPreview())
+	case ScreenExecution:
+		b.WriteString(m.viewExecution())
 	case ScreenResult:
 		b.WriteString(m.viewResult())
 	case ScreenGroupSelect:

@@ -4,6 +4,7 @@ package mihomo
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"clashctl/internal/system"
@@ -56,6 +57,9 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 
 	// 9. Check if mihomo is running (process check)
 	results = append(results, checkMihomoRunning(controllerAddr))
+
+	// 10. Check geodata files (needed for GEOIP/GEOSITE rules)
+	results = append(results, checkGeoData(configDir))
 
 	return results
 }
@@ -278,6 +282,43 @@ func CanUseTUN() bool {
 		return false
 	}
 	return true
+}
+
+func checkGeoData(configDir string) CheckResult {
+	files := DefaultGeoDataFiles()
+	missing := []string{}
+	ready := []string{}
+
+	for _, f := range files {
+		path := filepath.Join(configDir, f.Name)
+		info, err := os.Stat(path)
+		if err != nil || info.Size() == 0 {
+			if f.Required {
+				missing = append(missing, f.Name)
+			}
+		} else {
+			ready = append(ready, fmt.Sprintf("%s (%.1f MB)", f.Name, float64(info.Size())/(1024*1024)))
+		}
+	}
+
+	if len(missing) == 0 {
+		detail := ""
+		if len(ready) > 0 {
+			detail = fmt.Sprintf("全部就绪: %s", ready)
+		}
+		return CheckResult{
+			Name:    "GeoSite/GeoIP 数据",
+			Passed:  true,
+			Problem: detail,
+		}
+	}
+
+	return CheckResult{
+		Name:    "GeoSite/GeoIP 数据",
+		Passed:  false,
+		Problem: fmt.Sprintf("缺少: %s", missing),
+		Suggest: "Mihomo 首次启动时会自动下载，或使用 'clashctl init' 预下载",
+	}
 }
 
 // CheckTUNPermission checks if we can actually create a TUN interface.

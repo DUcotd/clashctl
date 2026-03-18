@@ -59,6 +59,9 @@ func (m WizardModel) executeFull() []ExecStep {
 		}
 	}
 
+	// Step 6.5: Pre-download geodata to avoid blocking mihomo startup
+	m.stepEnsureGeoData(&steps)
+
 	// Step 7: Setup systemd or start process
 	if m.appCfg.EnableSystemd {
 		m.stepSystemd(binary, &steps)
@@ -66,8 +69,8 @@ func (m WizardModel) executeFull() []ExecStep {
 		m.stepStartProcess(&steps)
 	}
 
-	// Step 8: Verify controller API (non-blocking check)
-	m.stepCheckController(&steps)
+	// Step 8: Verify controller API (with retry, since mihomo may need time)
+	m.stepCheckControllerWithRetry(&steps)
 
 	return steps
 }
@@ -225,6 +228,44 @@ func (m WizardModel) stepCheckTUNWithFallback(mihomoCfg *core.MihomoConfig, step
 	return true
 }
 
+// stepEnsureGeoData pre-downloads geodata files to avoid mihomo blocking on first startup.
+func (m WizardModel) stepEnsureGeoData(steps *[]ExecStep) {
+	configDir := m.appCfg.ConfigDir
+
+	if mihomo.GeoDataReady(configDir) {
+		*steps = append(*steps, ExecStep{
+			Label:   "GeoSite/GeoIP 数据",
+			Success: true,
+			Detail:  "已存在，跳过下载",
+		})
+		return
+	}
+
+	*steps = append(*steps, ExecStep{
+		Label:   "下载 GeoSite/GeoIP 数据",
+		Success: true,
+		Detail:  "首次运行，正在下载必要数据文件...",
+	})
+
+	downloaded, err := mihomo.EnsureGeoData(configDir)
+	if err != nil {
+		*steps = append(*steps, ExecStep{
+			Label:   "下载 GeoSite/GeoIP 数据",
+			Success: false,
+			Detail:  err.Error() + "\nMihomo 启动时会自动重试下载",
+		})
+		return
+	}
+
+	if downloaded > 0 {
+		*steps = append(*steps, ExecStep{
+			Label:   "下载 GeoSite/GeoIP 数据",
+			Success: true,
+			Detail:  fmt.Sprintf("已下载 %d 个数据文件到 %s", downloaded, configDir),
+		})
+	}
+}
+
 func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 	svcCfg := mihomo.ServiceConfig{
 		Binary:      binary,
@@ -281,18 +322,40 @@ func (m WizardModel) stepStartProcess(steps *[]ExecStep) {
 	})
 }
 
-func (m *WizardModel) stepCheckController(steps *[]ExecStep) {
+// stepCheckControllerWithRetry waits for the controller API to become ready.
+// Mihomo may need time to download subscription, geodata, etc.
+func (m *WizardModel) stepCheckControllerWithRetry(steps *[]ExecStep) {
 	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-	if err := client.CheckConnection(); err != nil {
+
+	// First check: maybe already ready
+	if err := client.CheckConnection(); err == nil {
+		m.reportControllerReady(client, steps)
+		return
+	}
+
+	// Not ready yet — retry up to 30 times (60 seconds total, 2s interval)
+	// This covers: geodata loading, subscription fetch, health check
+	*steps = append(*steps, ExecStep{
+		Label:   "等待 Mihomo 就绪",
+		Success: true,
+		Detail:  "首次启动可能需要下载 GeoSite/GeoIP 数据和订阅，正在等待...",
+	})
+
+	err := mihomo.WaitForController(m.appCfg.ControllerAddr, 30, 2*time.Second)
+	if err != nil {
 		*steps = append(*steps, ExecStep{
 			Label:   "检查 Controller API",
 			Success: false,
-			Detail:  err.Error() + "\nMihomo 可能还在启动中，请稍后用 'clashctl status' 检查",
+			Detail:  err.Error() + "\nMihomo 可能仍在加载，请用 'clashctl status' 检查",
 		})
 		m.controllerAvailable = false
 		return
 	}
 
+	m.reportControllerReady(client, steps)
+}
+
+func (m *WizardModel) reportControllerReady(client *mihomo.Client, steps *[]ExecStep) {
 	version, _ := client.Version()
 	detail := "Controller API 可达"
 	if version != "" {

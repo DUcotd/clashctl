@@ -96,7 +96,22 @@ func (m WizardModel) viewPreview() string {
 	content += TextStyle.Render("systemd:     ") + InputStyle.Render(boolToYesNo(cfg.EnableSystemd)) + "\n"
 	content += TextStyle.Render("自动启动:    ") + InputStyle.Render(boolToYesNo(cfg.AutoStart)) + "\n"
 
-	content += "\n" + HelpStyle.Render("Enter 确认并写入配置 │ Esc 返回修改")
+	content += "\n" + InfoStyle.Render("首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB）")
+	content += "\n" + HelpStyle.Render("Enter 确认并开始配置 │ Esc 返回修改")
+
+	return BoxStyle.Render(content)
+}
+
+func (m WizardModel) viewExecution() string {
+	content := m.spinner.View() + " " + HeaderStyle.Render("正在配置 Mihomo...") + "\n\n"
+
+	content += InfoStyle.Render("这可能需要一些时间，特别是首次运行：") + "\n"
+	content += InfoStyle.Render("  • 检查并下载 Mihomo（如未安装）") + "\n"
+	content += InfoStyle.Render("  • 生成配置文件") + "\n"
+	content += InfoStyle.Render("  • 下载 GeoSite/GeoIP 数据（~33MB）") + "\n"
+	content += InfoStyle.Render("  • 启动 Mihomo 服务") + "\n"
+	content += InfoStyle.Render("  • 等待 Controller API 就绪") + "\n\n"
+	content += HelpStyle.Render("请稍候...")
 
 	return BoxStyle.Render(content)
 }

@@ -30,6 +30,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	configDir := core.DefaultConfigDir
 
+	// Pre-download geodata if missing (avoids mihomo blocking on first startup)
+	if mihomo.NeedGeoData(configDir) {
+		fmt.Println("📦 首次运行，正在预下载 GeoSite/GeoIP 数据...")
+		if _, err := mihomo.EnsureGeoData(configDir); err != nil {
+			fmt.Printf("⚠️  预下载失败: %v (Mihomo 会自动重试)\n", err)
+		}
+	}
+
 	// Try systemd first
 	if mihomo.HasSystemd() {
 		binary, err := mihomo.FindBinary()

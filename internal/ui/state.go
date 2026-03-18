@@ -10,6 +10,7 @@ const (
 	ScreenMode
 	ScreenAdvanced
 	ScreenPreview
+	ScreenExecution // 正在执行配置
 	ScreenResult
 	ScreenGroupSelect // 选择代理组
 	ScreenNodeSelect  // 选择节点
@@ -22,19 +23,21 @@ func (s Screen) StepLabel() string {
 	case ScreenWelcome:
 		return "欢迎"
 	case ScreenSubscription:
-		return "步骤 1/7: 输入订阅 URL"
+		return "步骤 1/8: 输入订阅 URL"
 	case ScreenMode:
-		return "步骤 2/7: 选择运行模式"
+		return "步骤 2/8: 选择运行模式"
 	case ScreenAdvanced:
-		return "步骤 3/7: 高级设置"
+		return "步骤 3/8: 高级设置"
 	case ScreenPreview:
-		return "步骤 4/7: 配置预览"
+		return "步骤 4/8: 配置预览"
+	case ScreenExecution:
+		return "步骤 5/8: 正在配置..."
 	case ScreenResult:
-		return "步骤 5/7: 执行结果"
+		return "步骤 6/8: 执行结果"
 	case ScreenGroupSelect:
-		return "步骤 6/7: 选择代理组"
+		return "步骤 7/8: 选择代理组"
 	case ScreenNodeSelect:
-		return "步骤 7/7: 选择节点"
+		return "步骤 8/8: 选择节点"
 	default:
 		return ""
 	}
@@ -42,9 +45,9 @@ func (s Screen) StepLabel() string {
 
 // GroupItem represents a proxy group in the TUI list.
 type GroupItem struct {
-	Name     string
-	Type     string
-	Now      string
+	Name      string
+	Type      string
+	Now       string
 	NodeCount int
 }
 
@@ -58,4 +61,10 @@ type NodeItem struct {
 // nodeTestedMsg is sent when a batch of node tests completes.
 type nodeTestedMsg struct {
 	delays map[int]int // index -> delay
+}
+
+// executionDoneMsg is sent when executeFull completes.
+type executionDoneMsg struct {
+	steps             []ExecStep
+	controllerReady   bool
 }

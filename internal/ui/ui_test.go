@@ -12,13 +12,14 @@ func TestScreenStepLabel(t *testing.T) {
 		want   string
 	}{
 		{ScreenWelcome, "欢迎"},
-		{ScreenSubscription, "步骤 1/7: 输入订阅 URL"},
-		{ScreenMode, "步骤 2/7: 选择运行模式"},
-		{ScreenAdvanced, "步骤 3/7: 高级设置"},
-		{ScreenPreview, "步骤 4/7: 配置预览"},
-		{ScreenResult, "步骤 5/7: 执行结果"},
-		{ScreenGroupSelect, "步骤 6/7: 选择代理组"},
-		{ScreenNodeSelect, "步骤 7/7: 选择节点"},
+		{ScreenSubscription, "步骤 1/8: 输入订阅 URL"},
+		{ScreenMode, "步骤 2/8: 选择运行模式"},
+		{ScreenAdvanced, "步骤 3/8: 高级设置"},
+		{ScreenPreview, "步骤 4/8: 配置预览"},
+		{ScreenExecution, "步骤 5/8: 正在配置..."},
+		{ScreenResult, "步骤 6/8: 执行结果"},
+		{ScreenGroupSelect, "步骤 7/8: 选择代理组"},
+		{ScreenNodeSelect, "步骤 8/8: 选择节点"},
 		{ScreenDone, ""},
 	}
 	for _, tt := range tests {
