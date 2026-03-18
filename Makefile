@@ -1,8 +1,8 @@
 .PHONY: build clean test lint fmt vet all release
 
 APP_NAME := clashctl
-VERSION := $(shell grep 'currentVer' cmd/update.go | sed 's/.*"\(v[^"]*\)".*/\1/')
-LDFLAGS := -s -w -X clashctl/cmd.currentVer=$(VERSION)
+VERSION := $(shell grep '^\s*AppVersion' internal/core/defaults.go | sed 's/.*"\(v[^"]*\)".*/\1/')
+LDFLAGS := -s -w -X clashctl/internal/core.AppVersion=$(VERSION)
 
 PLATFORMS := linux/amd64 linux/arm64 linux/arm
 

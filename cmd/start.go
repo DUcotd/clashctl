@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
