@@ -100,7 +100,7 @@ func (d *ProxyGroupDetail) SortNodesByDelay() {
 		ai, aj := d.Nodes[i].Delay, d.Nodes[j].Delay
 		// 0 = unknown, -1 = timeout; both go to the end
 		if ai <= 0 && aj <= 0 {
-			return ai > aj // timeout (-1) before unknown (0)
+			return ai > aj // unknown (0) before timeout (-1)
 		}
 		if ai <= 0 {
 			return false

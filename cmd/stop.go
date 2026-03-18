@@ -22,11 +22,19 @@ func runStop(cmd *cobra.Command, args []string) error {
 	fmt.Println("🛑 正在停止 Mihomo...")
 
 	// Try systemd first
-	if err := mihomo.StopService("clashctl-mihomo"); err == nil {
-		fmt.Println("✅ 已通过 systemd 停止")
+	if mihomo.HasSystemd() {
+		if err := mihomo.StopService("clashctl-mihomo"); err == nil {
+			fmt.Println("✅ 已通过 systemd 停止")
+			return nil
+		}
+	}
+
+	// Fallback: kill processes directly
+	if mihomo.KillExistingMihomo() {
+		fmt.Println("✅ 已停止 Mihomo 进程")
 		return nil
 	}
 
-	fmt.Println("⚠️  systemd 服务未运行或不存在")
+	fmt.Println("⚠️  Mihomo 未在运行")
 	return nil
 }

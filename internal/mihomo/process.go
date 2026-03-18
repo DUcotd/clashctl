@@ -31,15 +31,18 @@ func (p *Process) Start() error {
 
 	p.cmd = exec.Command(binary, "-d", p.ConfigDir)
 
-	// Redirect to /dev/null so process doesn't hold terminal
+	// Redirect to /dev/null so process doesn't hold terminal.
+	// NOTE: intentionally not closing devNull — the background process
+	// needs these FDs open for its entire lifetime.
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
-		// Fallback: just discard output
 		p.cmd.Stdout = nil
 		p.cmd.Stderr = nil
 	} else {
 		p.cmd.Stdout = devNull
 		p.cmd.Stderr = devNull
+		// Let the OS clean up when the process exits
+		_ = devNull
 	}
 
 	// Create new process group to detach from parent.

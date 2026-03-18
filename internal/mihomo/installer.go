@@ -10,6 +10,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
@@ -91,7 +92,7 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
 		MihomoGitHubOwner, MihomoGitHubRepo)
 
-	client := &http.Client{Timeout: 15 * 1e9}
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err

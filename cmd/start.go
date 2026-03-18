@@ -29,7 +29,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Try systemd first
 	if mihomo.HasSystemd() {
-		// Generate service file if needed
 		binary, err := mihomo.FindBinary()
 		if err == nil {
 			svcCfg := mihomo.ServiceConfig{
@@ -37,9 +36,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 				ConfigDir:   "/etc/mihomo",
 				ServiceName: "clashctl-mihomo",
 			}
-			mihomo.SetupSystemd(svcCfg, true) // best effort
-			fmt.Println("✅ 通过 systemd 启动成功")
-			return nil
+			if err := mihomo.SetupSystemd(svcCfg, true); err == nil {
+				fmt.Println("✅ 通过 systemd 启动成功")
+				return nil
+			}
+			fmt.Printf("⚠️  systemd 启动失败: %v\n正在回退到子进程模式...\n", err)
 		}
 	}
 

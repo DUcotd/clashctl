@@ -82,6 +82,47 @@ case "$ARCH" in
     *)              die "不支持的架构: $ARCH" ;;
 esac
 
+# ─── SHA256 verification ───
+verify_checksum() {
+    local file="$1" expected_sha="$2"
+    if [ -z "$expected_sha" ]; then
+        return 0  # no checksum to verify against
+    fi
+    local actual_sha
+    actual_sha="$(sha256sum "$file" | cut -d' ' -f1)"
+    if [ "$actual_sha" != "$expected_sha" ]; then
+        warn "SHA256 校验失败!"
+        warn "  期望: $expected_sha"
+        warn "  实际: $actual_sha"
+        return 1
+    fi
+    ok "SHA256 校验通过"
+    return 0
+}
+
+# Fetch checksums file from release and extract hash for a specific asset
+fetch_asset_sha256() {
+    local repo="$1" version="$2" asset_name="$3"
+    local checksum_url
+    if [ "$version" = "latest" ]; then
+        checksum_url="https://github.com/$repo/releases/latest/download/checksums-sha256.txt"
+    else
+        checksum_url="https://github.com/$repo/releases/download/$version/checksums-sha256.txt"
+    fi
+    local tmpfile
+    tmpfile="$(mktemp)"
+    if curl -sfL --connect-timeout "$TIMEOUT" "$checksum_url" -o "$tmpfile" 2>/dev/null; then
+        # Extract hash for the specific asset (format: "hash  filename")
+        local hash
+        hash="$(grep "$asset_name" "$tmpfile" | head -1 | awk '{print $1}')"
+        rm -f "$tmpfile"
+        echo "$hash"
+    else
+        rm -f "$tmpfile"
+        echo ""
+    fi
+}
+
 # ─── Download to file with retry ───
 download_file() {
     local url="$1" output="$2"
@@ -135,6 +176,19 @@ install_clashctl() {
     info "下载 ${DIM}$CLASHCTL_VERSION${RESET}..."
     mkdir -p "$INSTALL_DIR"
     download_file "$url" "$INSTALL_DIR/clashctl" || die "clashctl 下载失败: $url"
+
+    # Verify SHA256 if available
+    local expected_sha
+    expected_sha="$(fetch_asset_sha256 "$CLASHCTL_REPO" "$CLASHCTL_VERSION" "clashctl-linux-${GOARCH}")"
+    if [ -n "$expected_sha" ]; then
+        if ! verify_checksum "$INSTALL_DIR/clashctl" "$expected_sha"; then
+            rm -f "$INSTALL_DIR/clashctl"
+            die "clashctl 下载校验失败，已删除损坏文件"
+        fi
+    else
+        warn "跳过 SHA256 校验（未找到 checksums 文件）"
+    fi
+
     chmod +x "$INSTALL_DIR/clashctl"
     ok "clashctl → $INSTALL_DIR/clashctl"
 }
