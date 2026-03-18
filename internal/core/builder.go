@@ -19,10 +19,10 @@ func extractSubscriptionDomain(subURL string) string {
 // BuildMihomoConfig generates a MihomoConfig from the given AppConfig.
 func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 	m := &MihomoConfig{
-		MixedPort:         cfg.MixedPort,
-		AllowLan:          false,
-		Mode:              "rule",
-		LogLevel:          "info",
+		MixedPort:          cfg.MixedPort,
+		AllowLan:           false,
+		Mode:               "rule",
+		LogLevel:           "info",
 		ExternalController: cfg.ControllerAddr,
 		ProxyProviders: map[string]*ProxyProvider{
 			"airport": {
@@ -64,11 +64,10 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 		DNS: &DNSConfig{
 			Enable:       true,
 			IPv6:         false,
-			EnhancedMode: "fake-ip",
-			FakeIPRange:  "198.18.0.1/16",
+			EnhancedMode: "redir-host",
 			NameServer: []string{
-				"https://1.1.1.1/dns-query",
-				"https://dns.google/dns-query",
+				"223.5.5.5",
+				"119.29.29.29",
 			},
 			Fallback: []string{
 				"https://1.1.1.1/dns-query",
@@ -98,10 +97,25 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 	}
 
 	// Fix: Add subscription domain as DIRECT to avoid chicken-and-egg problem
-	// where Mihomo tries to fetch subscription through the proxy itself
 	if subDomain := extractSubscriptionDomain(cfg.SubscriptionURL); subDomain != "" {
 		rules = append(rules, "DOMAIN,"+subDomain+",DIRECT")
 	}
+
+	// Common Chinese/global domains that GeoSite may not include
+	// but should always go direct to avoid proxy issues
+	rules = append(rules,
+		"DOMAIN-SUFFIX,ubuntu.com,DIRECT",
+		"DOMAIN-SUFFIX,github.com,DIRECT",
+		"DOMAIN-SUFFIX,githubusercontent.com,DIRECT",
+		"DOMAIN-SUFFIX,docker.io,DIRECT",
+		"DOMAIN-SUFFIX,registry-1.docker.io,DIRECT",
+		"DOMAIN-SUFFIX,pypi.org,DIRECT",
+		"DOMAIN-SUFFIX,npmjs.org,DIRECT",
+		"DOMAIN-SUFFIX,gcr.io,DIRECT",
+		"DOMAIN-SUFFIX,k8s.io,DIRECT",
+		"DOMAIN-SUFFIX,cloudflare.com,DIRECT",
+		"DOMAIN-SUFFIX,amazonaws.com,DIRECT",
+	)
 
 	// China mainland - direct
 	rules = append(rules,

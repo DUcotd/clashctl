@@ -107,8 +107,8 @@ func TestBuildMihomoConfig(t *testing.T) {
 	if m.DNS == nil {
 		t.Fatal("DNS config is nil")
 	}
-	if m.DNS.EnhancedMode != "fake-ip" {
-		t.Errorf("DNS enhanced mode = %q, want fake-ip", m.DNS.EnhancedMode)
+	if m.DNS.EnhancedMode != "redir-host" {
+		t.Errorf("DNS enhanced mode = %q, want redir-host", m.DNS.EnhancedMode)
 	}
 
 	// Check proxy groups - should have PROXY (select), auto (url-test), fallback
@@ -131,9 +131,6 @@ func TestBuildMihomoConfig(t *testing.T) {
 	}
 
 	// Check DNS enhancements
-	if m.DNS.FakeIPRange != "198.18.0.1/16" {
-		t.Errorf("DNS fake-ip-range = %q, want 198.18.0.1/16", m.DNS.FakeIPRange)
-	}
 	if len(m.DNS.Fallback) == 0 {
 		t.Error("DNS fallback should not be empty")
 	}
@@ -142,6 +139,10 @@ func TestBuildMihomoConfig(t *testing.T) {
 	}
 	if len(m.DNS.DirectNameserver) == 0 {
 		t.Error("DNS direct-nameserver should not be empty")
+	}
+	// Check domestic DNS is used as primary
+	if m.DNS.NameServer[0] != "223.5.5.5" {
+		t.Errorf("DNS nameserver[0] = %q, want 223.5.5.5", m.DNS.NameServer[0])
 	}
 
 	// Check routing rules - should have DIRECT rules for local/China traffic
@@ -193,9 +194,11 @@ func TestRenderYAML(t *testing.T) {
 		"tun:",
 		"enable: true",
 		"dns:",
-		"enhanced-mode: fake-ip",
+		"enhanced-mode: redir-host",
 		"rules:",
 		"MATCH,PROXY",
+		"DOMAIN-SUFFIX,ubuntu.com,DIRECT",
+		"DOMAIN-SUFFIX,github.com,DIRECT",
 	}
 
 	for _, check := range checks {
