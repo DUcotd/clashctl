@@ -18,7 +18,7 @@ import (
 const (
 	githubOwner = "DUcotd"
 	githubRepo  = "clashctl"
-	currentVer  = "v2.3.0"
+	currentVer  = "v2.3.1"
 )
 
 var updateCmd = &cobra.Command{
