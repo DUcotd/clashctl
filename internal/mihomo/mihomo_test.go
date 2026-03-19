@@ -1,14 +1,20 @@
 package mihomo
 
 import (
+	"bytes"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
 
 func TestFormatDelay(t *testing.T) {
 	tests := []struct {
@@ -168,14 +174,15 @@ func TestNewProcess(t *testing.T) {
 
 func TestGetProxyGroupEscapesPath(t *testing.T) {
 	var requestedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestedPath = r.URL.EscapedPath()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"name":"测试 组/一","type":"select","now":"节点 A","all":["节点 A"]}`)
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"name":"测试 组/一","type":"select","now":"节点 A","all":["节点 A"]}`)),
+		}, nil
+	})}
 	if _, err := client.GetProxyGroup("测试 组/一"); err != nil {
 		t.Fatalf("GetProxyGroup() error: %v", err)
 	}
@@ -188,15 +195,16 @@ func TestGetProxyGroupEscapesPath(t *testing.T) {
 func TestSwitchProxyEscapesPath(t *testing.T) {
 	var requestedPath string
 	var body string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestedPath = r.URL.EscapedPath()
 		payload, _ := io.ReadAll(r.Body)
 		body = string(payload)
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Body:       io.NopCloser(bytes.NewReader(nil)),
+		}, nil
+	})}
 	if err := client.SwitchProxy("测试/组", "节点 A"); err != nil {
 		t.Fatalf("SwitchProxy() error: %v", err)
 	}
@@ -211,14 +219,15 @@ func TestSwitchProxyEscapesPath(t *testing.T) {
 
 func TestTestNodeEscapesPath(t *testing.T) {
 	var requestedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestedPath = r.URL.EscapedPath()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"history":[{"time":"2026-03-19T00:00:00Z","delay":123}]}`)
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":123}]}`)),
+		}, nil
+	})}
 	if got := client.TestNode("组 /A", "节点/%25"); got != 123 {
 		t.Fatalf("TestNode() = %d, want 123", got)
 	}

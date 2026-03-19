@@ -71,4 +71,6 @@ type nodeTestedMsg struct {
 type executionDoneMsg struct {
 	steps           []ExecStep
 	controllerReady bool
+	canImport       bool
+	importHint      string
 }

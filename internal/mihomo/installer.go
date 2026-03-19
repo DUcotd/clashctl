@@ -35,12 +35,25 @@ type MihomoRelease struct {
 	} `json:"assets"`
 }
 
+// InstallResult describes the resolved Mihomo binary.
+type InstallResult struct {
+	Path       string
+	Version    string
+	ReleaseTag string
+	Installed  bool
+}
+
 // EnsureMihomo checks if mihomo is available, and if not, downloads and installs it.
 // Returns the path to the binary.
-func EnsureMihomo() (string, error) {
+func EnsureMihomo() (*InstallResult, error) {
 	// First check if already available
 	if path, err := FindBinary(); err == nil {
-		return path, nil
+		version, _ := GetBinaryVersion()
+		return &InstallResult{
+			Path:      path,
+			Version:   version,
+			Installed: false,
+		}, nil
 	}
 
 	// Not found, need to install
@@ -48,60 +61,53 @@ func EnsureMihomo() (string, error) {
 }
 
 // InstallMihomo downloads the latest mihomo binary to InstallPath.
-func InstallMihomo() (string, error) {
-	fmt.Println("📦 Mihomo 未安装，正在自动下载...")
-
+func InstallMihomo() (*InstallResult, error) {
 	release, err := fetchLatestMihomoRelease()
 	if err != nil {
-		return "", fmt.Errorf("获取 Mihomo 版本信息失败: %w", err)
+		return nil, fmt.Errorf("获取 Mihomo 版本信息失败: %w", err)
 	}
-
-	fmt.Printf("   最新版本: %s\n", release.TagName)
 
 	// Find matching binary
 	downloadURL, isGz := findMihomoAsset(release)
 	if downloadURL == "" {
-		return "", fmt.Errorf("未找到适用于 %s/%s 的 Mihomo 二进制文件", runtime.GOOS, runtime.GOARCH)
+		return nil, fmt.Errorf("未找到适用于 %s/%s 的 Mihomo 二进制文件", runtime.GOOS, runtime.GOARCH)
 	}
-
-	fmt.Printf("   下载中: %s\n", downloadURL)
 
 	tmpPath := installedBinaryPath + ".download"
 	if err := os.RemoveAll(tmpPath); err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("清理旧临时文件失败: %w", err)
+		return nil, fmt.Errorf("清理旧临时文件失败: %w", err)
 	}
 
 	if isGz {
 		if err := downloadAndDecompressGz(downloadURL, tmpPath); err != nil {
-			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
+			return nil, fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	} else {
 		if err := downloadBinary(downloadURL, tmpPath); err != nil {
-			return "", fmt.Errorf("下载 Mihomo 失败: %w", err)
+			return nil, fmt.Errorf("下载 Mihomo 失败: %w", err)
 		}
 	}
 	defer os.Remove(tmpPath)
 
 	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return "", fmt.Errorf("设置执行权限失败: %w", err)
+		return nil, fmt.Errorf("设置执行权限失败: %w", err)
 	}
 
 	version, err := validateBinary(tmpPath)
 	if err != nil {
-		return "", fmt.Errorf("下载的 Mihomo 二进制不可用: %w", err)
+		return nil, fmt.Errorf("下载的 Mihomo 二进制不可用: %w", err)
 	}
 
 	if err := activateBinary(tmpPath, installedBinaryPath); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	fmt.Printf("✅ Mihomo 已安装到: %s\n", installedBinaryPath)
-
-	if version != "" {
-		fmt.Printf("   版本: %s\n", version)
-	}
-
-	return installedBinaryPath, nil
+	return &InstallResult{
+		Path:       installedBinaryPath,
+		Version:    version,
+		ReleaseTag: release.TagName,
+		Installed:  true,
+	}, nil
 }
 
 func activateBinary(srcPath, destPath string) error {
@@ -223,7 +229,11 @@ func downloadBinary(url, destPath string) error {
 
 // downloadAndDecompressGz downloads a gzip-compressed file and decompresses it to destPath.
 func downloadAndDecompressGz(url, destPath string) error {
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := system.NewHTTPClient(5*time.Minute, false).Do(req)
 	if err != nil {
 		return err
 	}

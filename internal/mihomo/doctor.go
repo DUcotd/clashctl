@@ -117,6 +117,14 @@ func checkTUNDevice() CheckResult {
 			Suggest: "请加载 TUN 内核模块: sudo modprobe tun",
 		}
 	}
+	if err := CheckTUNPermission(); err != nil {
+		return CheckResult{
+			Name:    "TUN 设备 (/dev/net/tun)",
+			Passed:  false,
+			Problem: err.Error(),
+			Suggest: "请使用 sudo 运行，或检查容器/宿主机是否授予了 TUN 访问权限",
+		}
+	}
 	return CheckResult{
 		Name:   "TUN 设备 (/dev/net/tun)",
 		Passed: true,

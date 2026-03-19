@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"clashctl/internal/system"
 )
 
 const (
@@ -24,6 +26,23 @@ type GeoDataFile struct {
 	Name     string // e.g. "geosite.dat"
 	Required bool   // whether mihomo needs this to start
 	SizeHint string // human-readable expected size for UI display
+}
+
+// GeoDataFileResult reports the outcome for one geodata file.
+type GeoDataFileResult struct {
+	Name       string
+	Downloaded bool
+	Skipped    bool
+	Required   bool
+	Source     string
+	Error      string
+}
+
+// GeoDataResult summarizes geodata preparation.
+type GeoDataResult struct {
+	AlreadyReady bool
+	Downloaded   int
+	Files        []GeoDataFileResult
 }
 
 // DefaultGeoDataFiles returns the list of geodata files mihomo needs.
@@ -56,18 +75,22 @@ func GeoDataURLMirror2(filename string) string {
 
 // EnsureGeoData downloads missing geodata files to configDir.
 // Returns the number of files downloaded and any error.
-func EnsureGeoData(configDir string) (downloaded int, err error) {
-	client := &http.Client{Timeout: GeoDataDownloadTimeout}
+func EnsureGeoData(configDir string) (*GeoDataResult, error) {
+	client := system.NewHTTPClient(GeoDataDownloadTimeout, false)
+	result := &GeoDataResult{}
 
 	for _, f := range DefaultGeoDataFiles() {
 		destPath := filepath.Join(configDir, f.Name)
 
 		// Skip if already exists and is not empty
 		if info, err := os.Stat(destPath); err == nil && info.Size() > 0 {
+			result.Files = append(result.Files, GeoDataFileResult{
+				Name:     f.Name,
+				Skipped:  true,
+				Required: f.Required,
+			})
 			continue
 		}
-
-		fmt.Printf("   📥 下载 %s (%s)...\n", f.Name, f.SizeHint)
 
 		// Try multiple sources
 		urls := []string{
@@ -77,37 +100,46 @@ func EnsureGeoData(configDir string) (downloaded int, err error) {
 		}
 
 		var lastErr error
-		downloaded_ok := false
-		for i, url := range urls {
+		fileResult := GeoDataFileResult{
+			Name:     f.Name,
+			Required: f.Required,
+		}
+		downloadedOK := false
+		for _, url := range urls {
 			if err := downloadGeoFile(client, url, destPath); err != nil {
 				lastErr = err
-				if i < len(urls)-1 {
-					fmt.Printf("   ⚠️  源 %d 失败，尝试下一个...\n", i+1)
-				}
 				continue
 			}
-			downloaded_ok = true
+			downloadedOK = true
+			fileResult.Source = url
+			fileResult.Downloaded = true
 			break
 		}
 
-		if !downloaded_ok {
+		if !downloadedOK {
+			fileResult.Error = lastErr.Error()
+			result.Files = append(result.Files, fileResult)
 			if f.Required {
-				return downloaded, fmt.Errorf("下载 %s 失败（所有源均不可用）: %w", f.Name, lastErr)
+				return result, fmt.Errorf("下载 %s 失败（所有源均不可用）: %w", f.Name, lastErr)
 			}
-			fmt.Printf("   ⚠️  %s 下载失败（非必需，继续）\n", f.Name)
 			continue
 		}
 
-		downloaded++
-		fmt.Printf("   ✅ %s 下载完成\n", f.Name)
+		result.Downloaded++
+		result.Files = append(result.Files, fileResult)
 	}
 
-	return downloaded, nil
+	result.AlreadyReady = result.Downloaded == 0
+	return result, nil
 }
 
 // downloadGeoFile downloads a single geodata file, handling .gz decompression.
-func downloadGeoFile(client *http.Client, url, destPath string) error {
-	resp, err := client.Get(url)
+func downloadGeoFile(client system.HTTPDoer, url, destPath string) error {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

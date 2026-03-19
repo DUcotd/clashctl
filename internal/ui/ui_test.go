@@ -173,22 +173,53 @@ func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenExecution {
-		t.Fatalf("screen = %v, want ScreenExecution", got.screen)
+	if got.screen != ScreenMode {
+		t.Fatalf("screen = %v, want ScreenMode", got.screen)
 	}
-	if got.appCfg.Mode != "mixed" {
-		t.Fatalf("mode = %q, want mixed", got.appCfg.Mode)
+	if got.appCfg.SubscriptionURL != "https://example.com/sub" {
+		t.Fatalf("SubscriptionURL = %q", got.appCfg.SubscriptionURL)
 	}
 }
 
-func TestSubscriptionAEntersAdvanced(t *testing.T) {
+func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 	wizard.screen = ScreenSubscription
-	wizard.urlInput.SetValue("https://example.com/sub")
+	wizard.urlInput.SetValue("/tmp/sub.txt")
 
-	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
 	if got.screen != ScreenMode {
 		t.Fatalf("screen = %v, want ScreenMode", got.screen)
+	}
+	if got.localImportPath != "/tmp/sub.txt" {
+		t.Fatalf("localImportPath = %q", got.localImportPath)
+	}
+	if got.appCfg.SubscriptionURL != "" {
+		t.Fatalf("SubscriptionURL = %q, want empty for local import", got.appCfg.SubscriptionURL)
+	}
+}
+
+func TestExecutionDoneMsgCarriesImportFallbackState(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+
+	updated, _ := wizard.Update(executionDoneMsg{
+		steps:           []ExecStep{{Label: "验证代理节点加载", Success: false, Detail: "provider 拉取失败"}},
+		controllerReady: false,
+		canImport:       true,
+		importHint:      "provider 拉取失败",
+	})
+
+	got := updated.(WizardModel)
+	if !got.canImportFallback {
+		t.Fatal("canImportFallback should be true")
+	}
+	if got.importHint != "provider 拉取失败" {
+		t.Fatalf("importHint = %q", got.importHint)
+	}
+}
+
+func TestProtocolBadgeNormalizesCase(t *testing.T) {
+	if got := protocolBadge("vless"); !strings.Contains(got, "Vless") {
+		t.Fatalf("protocolBadge(vless) = %q", got)
 	}
 }

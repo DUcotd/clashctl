@@ -9,129 +9,103 @@ import (
 	"time"
 
 	"clashctl/internal/app"
-	"clashctl/internal/config"
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 	"clashctl/internal/subscription"
 	"clashctl/internal/system"
 )
 
-type configPlan struct {
-	mihomoCfg *core.MihomoConfig
-	rawYAML   []byte
-	detail    string
-}
-
 // executeFull performs the full configuration and startup pipeline.
 func (m WizardModel) executeFull() []ExecStep {
 	var steps []ExecStep
 
-	// Step 1: Check mihomo binary
-	binary, binaryOK := m.stepCheckBinary(&steps)
-	if !binaryOK {
-		return steps
-	}
+	runtime := mihomo.NewRuntimeManager()
+	resolver := subscription.NewResolver()
 
-	// Step 2: Resolve subscription and build config plan
-	plan, ok := m.stepResolveConfig(&steps)
+	m.stepResolveRuntimeConfig(runtime, &steps)
+	binary, ok := m.stepEnsureBinary(runtime, &steps)
 	if !ok {
 		return steps
 	}
 
-	// Step 3: Write config file
-	configPath := m.appCfg.ConfigDir + "/config.yaml"
+	plan, ok := m.stepResolveRemotePlan(resolver, &steps)
+	if !ok {
+		return steps
+	}
+
+	configPath := filepath.Join(m.appCfg.ConfigDir, "config.yaml")
 	if !m.stepWritePlan(plan, configPath, &steps) {
 		return steps
 	}
 
-	// Step 4: Check /dev/net/tun (TUN mode only) - auto fallback to mixed-port
-	if m.appCfg.Mode == "tun" {
-		if !m.stepCheckTUNWithFallback(plan.mihomoCfg, &steps) {
-			// TUN not available, re-generate config in mixed-port mode
-			m.appCfg.Mode = "mixed"
-			fallbackPlan, ok := m.stepResolveConfig(&steps)
-			if !ok {
-				return steps
-			}
-			if !m.stepWritePlan(fallbackPlan, configPath, &steps) {
-				return steps
-			}
-		}
+	if !m.stepSaveAppConfig(&steps, "") {
+		return steps
 	}
 
-	if err := app.SaveAppConfig(m.appCfg); err != nil {
+	startResult, err := runtime.StartWithBinary(m.appCfg, binary, mihomo.StartOptions{
+		VerifyInventory: true,
+		WaitRetries:     30,
+		WaitInterval:    2 * time.Second,
+	})
+	if err != nil {
+		m.appendStartResult(startResult, &steps)
 		steps = append(steps, ExecStep{
-			Label:   "保存 clashctl 配置",
+			Label:   "启动 Mihomo",
 			Success: false,
 			Detail:  err.Error(),
 		})
-	} else {
-		steps = append(steps, ExecStep{
-			Label:   "保存 clashctl 配置",
-			Success: true,
-			Detail:  "已写入 ~/.config/clashctl/config.yaml",
-		})
+		m.controllerAvailable = false
+		return steps
 	}
-
-	// Step 6.5: Pre-download geodata to avoid blocking mihomo startup
-	m.stepEnsureGeoData(&steps)
-
-	// Step 7: Setup systemd or start process
-	if m.appCfg.EnableSystemd {
-		m.stepSystemd(binary, &steps)
-	} else {
-		m.stepStartProcess(&steps)
-	}
-
-	// Step 8: Verify controller API (with retry, since mihomo may need time)
-	m.stepCheckControllerWithRetry(&steps)
-	if m.controllerAvailable {
-		m.stepVerifyProxyInventory(&steps)
-	}
-
+	m.appendStartResult(startResult, &steps)
 	return steps
 }
 
-func (m WizardModel) stepCheckBinary(steps *[]ExecStep) (string, bool) {
-	binary, err := mihomo.FindBinary()
+func (m *WizardModel) stepResolveRuntimeConfig(runtime *mihomo.RuntimeManager, steps *[]ExecStep) {
+	resolved, warnings := runtime.ResolveConfig(m.appCfg)
+	m.appCfg = resolved
+	if len(warnings) == 0 {
+		return
+	}
+	*steps = append(*steps, ExecStep{
+		Label:   "调整运行模式",
+		Success: true,
+		Detail:  strings.Join(warnings, "\n"),
+	})
+}
+
+func (m WizardModel) stepEnsureBinary(runtime *mihomo.RuntimeManager, steps *[]ExecStep) (*mihomo.InstallResult, bool) {
+	result, err := runtime.EnsureBinary()
 	if err != nil {
-		// Not found, try auto-download
 		*steps = append(*steps, ExecStep{
 			Label:   "检测 Mihomo 可执行文件",
 			Success: false,
-			Detail:  "未找到，尝试自动下载...",
+			Detail:  err.Error(),
 		})
+		return nil, false
+	}
 
-		binary, err = mihomo.InstallMihomo()
-		if err != nil {
-			*steps = append(*steps, ExecStep{
-				Label:   "自动下载 Mihomo",
-				Success: false,
-				Detail:  err.Error(),
-			})
-			return "", false
-		}
-		*steps = append(*steps, ExecStep{
-			Label:   "自动下载 Mihomo",
-			Success: true,
-			Detail:  "已安装到 " + binary,
-		})
-		return binary, true
+	label := "检测 Mihomo 可执行文件"
+	detail := "已找到: " + result.Path
+	if result.Installed {
+		label = "自动下载 Mihomo"
+		detail = "已安装到 " + result.Path
 	}
-	version, _ := mihomo.GetBinaryVersion()
-	detail := "已找到: " + binary
-	if version != "" {
-		detail += " (" + version + ")"
+	if result.Version != "" {
+		detail += " (" + result.Version + ")"
 	}
+	if result.ReleaseTag != "" && result.Installed {
+		detail += "\n发布版本: " + result.ReleaseTag
+	}
+
 	*steps = append(*steps, ExecStep{
-		Label:   "检测 Mihomo 可执行文件",
+		Label:   label,
 		Success: true,
 		Detail:  detail,
 	})
-	return binary, true
+	return result, true
 }
 
-func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
+func (m WizardModel) stepResolveRemotePlan(resolver *subscription.Resolver, steps *[]ExecStep) (*subscription.ResolvedConfigPlan, bool) {
 	if errs := m.appCfg.Validate(); len(errs) > 0 {
 		*steps = append(*steps, ExecStep{
 			Label:   "验证配置参数",
@@ -141,7 +115,7 @@ func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 		return nil, false
 	}
 
-	prepared, err := system.PrepareSubscriptionURL(m.appCfg.SubscriptionURL, 15*time.Second)
+	plan, err := resolver.ResolveRemoteURL(m.appCfg, m.appCfg.SubscriptionURL, 15*time.Second)
 	if err != nil {
 		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl import --file sub.txt --apply --start'"
 		if mihomo.IsMihomoRunningAt(m.appCfg.ControllerAddr) {
@@ -150,18 +124,13 @@ func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 		*steps = append(*steps, ExecStep{Label: "获取订阅内容", Success: false, Detail: detail})
 		return nil, false
 	}
-	body := prepared.Body
-	probe := &system.URLProbeResult{
-		ContentKind: system.ProbeContentKind(body),
-		UsedProxy:   system.HasProxyEnvForDisplay(),
-	}
 
-	detail := fmt.Sprintf("已通过订阅脚本下载内容 (%s)", probe.ContentKind)
-	if probe.UsedProxy {
+	detail := fmt.Sprintf("已通过订阅脚本下载内容 (%s)", plan.ContentKind)
+	if plan.UsedProxyEnv {
 		detail += "\n已忽略当前 shell 中的代理环境变量，直接下载订阅地址"
 	}
-	if prepared.FetchDetail != "" {
-		detail += "\n" + prepared.FetchDetail
+	if plan.FetchDetail != "" {
+		detail += "\n" + plan.FetchDetail
 	}
 	*steps = append(*steps, ExecStep{
 		Label:   "获取订阅内容",
@@ -169,78 +138,62 @@ func (m WizardModel) stepResolveConfig(steps *[]ExecStep) (*configPlan, bool) {
 		Detail:  detail,
 	})
 
-	if probe.ContentKind == "raw-links" || probe.ContentKind == "base64-links" {
-		parsed, err := subscription.Parse(body)
-		if err != nil {
-			*steps = append(*steps, ExecStep{Label: "解析订阅内容", Success: false, Detail: err.Error()})
-			return nil, false
-		}
-		*steps = append(*steps, ExecStep{Label: "解析订阅内容", Success: true, Detail: fmt.Sprintf("已解析 %d 个节点，默认使用静态配置", len(parsed.Names))})
-		cfg := core.BuildStaticMihomoConfig(m.appCfg, parsed.Proxies, parsed.Names)
-		return &configPlan{mihomoCfg: cfg, detail: fmt.Sprintf("静态配置已生成 (%d 个节点)", len(parsed.Names))}, true
-	}
-
-	if probe.ContentKind == "mihomo-yaml" {
-		patched, err := subscription.PatchRemoteYAML(body, m.appCfg)
-		if err != nil {
-			*steps = append(*steps, ExecStep{Label: "处理订阅 YAML", Success: false, Detail: err.Error()})
-			return nil, false
-		}
-		*steps = append(*steps, ExecStep{Label: "处理订阅 YAML", Success: true, Detail: "检测到 Mihomo/Clash YAML，已直接转为本地静态配置"})
-		return &configPlan{rawYAML: patched, detail: "已使用远程 YAML 作为本地配置"}, true
-	}
-
-	providerCfg := core.BuildMihomoConfig(m.appCfg)
-	*steps = append(*steps, ExecStep{Label: "生成 Mihomo 配置", Success: true, Detail: fmt.Sprintf("未识别为原始节点订阅，回退为 provider 模式: %s", m.appCfg.SubscriptionURL)})
-	return &configPlan{mihomoCfg: providerCfg, detail: "已生成 provider 配置"}, true
-}
-
-func (m WizardModel) stepRenderYAML(cfg *core.MihomoConfig, steps *[]ExecStep) ([]byte, bool) {
-	data, err := core.RenderYAML(cfg)
-	if err != nil {
+	switch plan.Kind {
+	case subscription.PlanKindStatic:
 		*steps = append(*steps, ExecStep{
-			Label:   "渲染 YAML",
-			Success: false,
-			Detail:  err.Error(),
+			Label:   "解析订阅内容",
+			Success: true,
+			Detail:  fmt.Sprintf("检测到 %s，解析出 %d 个节点", plan.DetectedFormat, plan.ProxyCount),
 		})
-		return nil, false
+	case subscription.PlanKindYAML:
+		*steps = append(*steps, ExecStep{
+			Label:   "处理订阅 YAML",
+			Success: true,
+			Detail:  plan.Summary,
+		})
+	case subscription.PlanKindProvider:
+		*steps = append(*steps, ExecStep{
+			Label:   "生成 Mihomo 配置",
+			Success: true,
+			Detail:  plan.Summary,
+		})
 	}
-	*steps = append(*steps, ExecStep{
-		Label:   "渲染 YAML",
-		Success: true,
-		Detail:  fmt.Sprintf("%d bytes", len(data)),
-	})
-	return data, true
+
+	return plan, true
 }
 
-func (m WizardModel) stepWritePlan(plan *configPlan, path string, steps *[]ExecStep) bool {
+func (m WizardModel) stepWritePlan(plan *subscription.ResolvedConfigPlan, path string, steps *[]ExecStep) bool {
 	if plan == nil {
 		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: "配置计划为空"})
 		return false
 	}
-	if len(plan.rawYAML) > 0 {
-		return m.stepWriteRawConfig(plan.rawYAML, path, steps)
-	}
-	if plan.mihomoCfg == nil {
-		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: "未生成可写入的配置"})
-		return false
-	}
-	_, _ = m.stepRenderYAML(plan.mihomoCfg, steps)
-	return m.stepWriteConfig(plan.mihomoCfg, path, steps)
-}
-
-func (m WizardModel) stepWriteRawConfig(data []byte, path string, steps *[]ExecStep) bool {
 	if err := system.EnsureDir(m.appCfg.ConfigDir); err != nil {
 		*steps = append(*steps, ExecStep{Label: "创建配置目录", Success: false, Detail: err.Error()})
 		return false
 	}
 	*steps = append(*steps, ExecStep{Label: "创建配置目录", Success: true, Detail: m.appCfg.ConfigDir})
-	backupPath, err := config.SaveRawYAML(data, path)
+
+	yamlData, err := plan.RenderYAML()
+	if err != nil {
+		*steps = append(*steps, ExecStep{Label: "渲染 YAML", Success: false, Detail: err.Error()})
+		return false
+	}
+	*steps = append(*steps, ExecStep{
+		Label:   "渲染 YAML",
+		Success: true,
+		Detail:  fmt.Sprintf("%d bytes", len(yamlData)),
+	})
+
+	backupPath, err := plan.Save(path)
 	if err != nil {
 		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: err.Error()})
 		return false
 	}
-	detail := fmt.Sprintf("已写入 %s\n静态配置优先，后续无需服务器再次拉取订阅", path)
+
+	detail := "已写入 " + path
+	if plan.Kind != subscription.PlanKindProvider {
+		detail += "\n静态配置优先，后续无需服务器再次拉取订阅"
+	}
 	if backupPath != "" {
 		detail += "\n旧配置已备份至: " + backupPath
 	}
@@ -248,242 +201,86 @@ func (m WizardModel) stepWriteRawConfig(data []byte, path string, steps *[]ExecS
 	return true
 }
 
-func (m WizardModel) stepWriteConfig(cfg *core.MihomoConfig, path string, steps *[]ExecStep) bool {
-	if err := system.EnsureDir(m.appCfg.ConfigDir); err != nil {
+func (m WizardModel) stepSaveAppConfig(steps *[]ExecStep, extraDetail string) bool {
+	if err := app.SaveAppConfig(m.appCfg); err != nil {
 		*steps = append(*steps, ExecStep{
-			Label:   "创建配置目录",
+			Label:   "保存 clashctl 配置",
 			Success: false,
 			Detail:  err.Error(),
 		})
 		return false
 	}
-	*steps = append(*steps, ExecStep{
-		Label:   "创建配置目录",
-		Success: true,
-		Detail:  m.appCfg.ConfigDir,
-	})
-
-	backupPath, err := config.SaveMihomoConfig(cfg, path)
-	if err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "写入配置文件",
-			Success: false,
-			Detail:  err.Error(),
-		})
-		return false
-	}
-	detail := "已写入 " + path
-	if backupPath != "" {
-		detail += "\n旧配置已备份至: " + backupPath
+	detail := "已写入 ~/.config/clashctl/config.yaml"
+	if extraDetail != "" {
+		detail += "\n" + extraDetail
 	}
 	*steps = append(*steps, ExecStep{
-		Label:   "写入配置文件",
+		Label:   "保存 clashctl 配置",
 		Success: true,
 		Detail:  detail,
 	})
 	return true
 }
 
-// stepCheckTUNWithFallback checks TUN availability.
-// Returns true if TUN is usable, false if we need to fall back to mixed-port.
-func (m WizardModel) stepCheckTUNWithFallback(mihomoCfg *core.MihomoConfig, steps *[]ExecStep) bool {
-	if !mihomo.CanUseTUN() {
-		reasons := []string{}
-		if _, err := system.StatFile("/dev/net/tun"); err != nil {
-			reasons = append(reasons, "/dev/net/tun 不存在")
-		}
-		if !system.CommandExists("iptables") {
-			reasons = append(reasons, "iptables 未安装")
-		}
-		*steps = append(*steps, ExecStep{
-			Label:   "检查 TUN 设备",
-			Success: false,
-			Detail:  fmt.Sprintf("TUN 不可用: %s\n自动降级到 mixed-port 模式...", fmt.Sprintf("%v", reasons)),
-		})
-		return false
-	}
-	*steps = append(*steps, ExecStep{
-		Label:   "TUN 设备 & 权限",
-		Success: true,
-		Detail:  "/dev/net/tun 可用，iptables 已安装",
-	})
-	return true
-}
-
-// stepEnsureGeoData pre-downloads geodata files to avoid mihomo blocking on first startup.
-func (m WizardModel) stepEnsureGeoData(steps *[]ExecStep) {
-	configDir := m.appCfg.ConfigDir
-
-	if mihomo.GeoDataReady(configDir) {
-		*steps = append(*steps, ExecStep{
-			Label:   "GeoSite/GeoIP 数据",
-			Success: true,
-			Detail:  "已存在，跳过下载",
-		})
+func (m *WizardModel) appendStartResult(result *mihomo.StartResult, steps *[]ExecStep) {
+	if result == nil {
 		return
 	}
 
-	downloaded, err := mihomo.EnsureGeoData(configDir)
-	if err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "GeoSite/GeoIP 数据",
-			Success: false,
-			Detail:  err.Error() + "\nMihomo 启动时会自动重试下载",
-		})
-		return
-	}
-
-	if downloaded > 0 {
-		*steps = append(*steps, ExecStep{
-			Label:   "GeoSite/GeoIP 数据",
-			Success: true,
-			Detail:  fmt.Sprintf("已下载 %d 个数据文件到 %s", downloaded, configDir),
-		})
-	}
-}
-
-func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
-	svcCfg := mihomo.ServiceConfig{
-		Binary:      binary,
-		ConfigDir:   m.appCfg.ConfigDir,
-		ServiceName: core.DefaultServiceName,
-	}
-
-	if err := mihomo.SetupSystemd(svcCfg, m.appCfg.AutoStart, m.appCfg.AutoStart); err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "配置 systemd 服务",
-			Success: false,
-			Detail:  err.Error() + "\n回退到子进程启动...",
-		})
-		// Fallback to direct process
-		m.stepStartProcess(steps)
-		return
-	}
-
-	detail := "服务文件已写入"
-	if m.appCfg.AutoStart {
-		detail += "，已启用开机自启"
-	} else {
-		detail += "，未启用开机自启"
-	}
-	if m.appCfg.AutoStart {
-		detail += "，已启动"
-	}
-	*steps = append(*steps, ExecStep{
-		Label:   "配置 systemd 服务",
-		Success: true,
-		Detail:  detail,
-	})
-}
-
-func (m WizardModel) stepStartProcess(steps *[]ExecStep) {
-	if mihomo.HasSystemd() {
-		if active, _ := mihomo.ServiceStatus(mihomo.DefaultServiceName); active {
-			if err := mihomo.StopService(mihomo.DefaultServiceName); err != nil {
-				*steps = append(*steps, ExecStep{
-					Label:   "停止 systemd 服务",
-					Success: false,
-					Detail:  err.Error(),
-				})
-			} else {
-				*steps = append(*steps, ExecStep{
-					Label:   "停止 systemd 服务",
-					Success: true,
-					Detail:  "已停止已有的 clashctl-mihomo 服务",
-				})
-			}
+	if result.GeoData != nil || result.GeoDataError != "" {
+		if result.GeoDataError != "" {
+			*steps = append(*steps, ExecStep{
+				Label:   "GeoSite/GeoIP 数据",
+				Success: false,
+				Detail:  result.GeoDataError + "\nMihomo 启动时会自动重试下载",
+			})
+		} else if result.GeoData.Downloaded > 0 {
+			*steps = append(*steps, ExecStep{
+				Label:   "GeoSite/GeoIP 数据",
+				Success: true,
+				Detail:  fmt.Sprintf("已下载 %d 个数据文件到 %s", result.GeoData.Downloaded, m.appCfg.ConfigDir),
+			})
 		}
 	}
 
-	// Stop any managed Mihomo processes using the same config directory.
-	stopped, err := mihomo.StopManagedProcess(m.appCfg.ConfigDir)
-	if err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "清理旧进程",
-			Success: false,
-			Detail:  err.Error(),
-		})
-	} else if stopped {
-		*steps = append(*steps, ExecStep{
-			Label:   "清理旧进程",
-			Success: true,
-			Detail:  "已停止当前配置目录对应的 Mihomo 进程",
-		})
+	startDetail := "Mihomo 已启动"
+	switch result.StartedBy {
+	case "systemd":
+		startDetail = "已通过 systemd 启动"
+	case "process":
+		startDetail = "Mihomo 已以子进程方式启动"
 	}
-
-	proc := mihomo.NewProcess(m.appCfg.ConfigDir)
-	if err := proc.Start(); err != nil {
-		*steps = append(*steps, ExecStep{
-			Label:   "启动 Mihomo 进程",
-			Success: false,
-			Detail:  err.Error(),
-		})
-		return
+	if result.ServiceStopped {
+		startDetail += "\n已停止旧的 systemd 服务"
 	}
-
+	if result.ProcessStopped {
+		startDetail += "\n已清理旧进程"
+	}
+	if len(result.Warnings) > 0 {
+		startDetail += "\n" + strings.Join(result.Warnings, "\n")
+	}
 	*steps = append(*steps, ExecStep{
-		Label:   "启动 Mihomo 进程",
+		Label:   "启动 Mihomo",
 		Success: true,
-		Detail:  "Mihomo 已以子进程方式启动",
-	})
-}
-
-// stepCheckControllerWithRetry waits for the controller API to become ready.
-// Mihomo may need time to download subscription, geodata, etc.
-func (m *WizardModel) stepCheckControllerWithRetry(steps *[]ExecStep) {
-	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-
-	// First check: maybe already ready
-	if err := client.CheckConnection(); err == nil {
-		m.reportControllerReady(client, steps)
-		return
-	}
-
-	// Not ready yet — retry up to 30 times (60 seconds total, 2s interval)
-	// This covers: geodata loading, subscription fetch, health check
-	*steps = append(*steps, ExecStep{
-		Label:   "等待 Mihomo 就绪",
-		Success: true,
-		Detail:  "首次启动可能需要下载 GeoSite/GeoIP 数据和订阅，正在等待...",
+		Detail:  startDetail,
 	})
 
-	err := mihomo.WaitForController(m.appCfg.ControllerAddr, 30, 2*time.Second)
-	if err != nil {
+	if result.ControllerReady {
+		m.controllerAvailable = true
+		detail := "Controller API 可达"
+		if result.ControllerVersion != "" {
+			detail += " (Mihomo " + result.ControllerVersion + ")"
+		}
 		*steps = append(*steps, ExecStep{
 			Label:   "检查 Controller API",
-			Success: false,
-			Detail:  err.Error() + "\nMihomo 可能仍在加载，请用 'clashctl status' 检查",
+			Success: true,
+			Detail:  detail,
 		})
+	} else {
 		m.controllerAvailable = false
-		return
 	}
 
-	m.reportControllerReady(client, steps)
-}
-
-func (m *WizardModel) reportControllerReady(client *mihomo.Client, steps *[]ExecStep) {
-	version, _ := client.Version()
-	detail := "Controller API 可达"
-	if version != "" {
-		detail += " (Mihomo " + version + ")"
-	}
-
-	if group, err := client.GetProxyGroup("PROXY"); err == nil {
-		detail += fmt.Sprintf("\n代理组 PROXY: %d 个节点已加载", len(group.All))
-	}
-
-	m.controllerAvailable = true
-	*steps = append(*steps, ExecStep{
-		Label:   "检查 Controller API",
-		Success: true,
-		Detail:  detail,
-	})
-}
-
-func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
-	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-	inv, err := client.InspectProxyInventory("PROXY")
-	if err != nil {
+	if result.InventoryError != "" {
 		m.controllerAvailable = false
 		*steps = append(*steps, ExecStep{
 			Label:   "验证代理节点加载",
@@ -493,23 +290,15 @@ func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
 		return
 	}
 
-	providerPath := filepath.Join(m.appCfg.ConfigDir, m.appCfg.ProviderPath)
-	providerMissing := false
-	if strings.TrimSpace(m.appCfg.SubscriptionURL) != "" {
-		if info, err := system.StatFile(providerPath); err != nil || info.Size() == 0 {
-			providerMissing = true
-		}
+	if result.Inventory == nil {
+		return
 	}
 
-	loaded := inv.Loaded
-	if loaded == 0 || inv.OnlyCompatible || providerMissing {
+	if result.Inventory.Loaded == 0 || result.Inventory.OnlyCompatible {
 		m.controllerAvailable = false
 		detail := "Controller API 已就绪，但订阅节点未成功加载"
-		if providerMissing {
-			detail += fmt.Sprintf("\nprovider 文件不存在或为空: %s", providerPath)
-		}
-		if loaded > 0 {
-			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", inv.Candidates)
+		if result.Inventory.Loaded > 0 {
+			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", result.Inventory.Candidates)
 		}
 		detail += "\n常见原因: 服务器无法直连订阅 URL、provider 拉取失败、或订阅返回的是原始节点链接"
 		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl import --file sub.txt -o config.yaml' 生成静态配置"
@@ -521,9 +310,9 @@ func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
 		return
 	}
 
-	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", loaded)
-	if inv.Current != "" {
-		detail += "\n当前节点: " + inv.Current
+	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", result.Inventory.Loaded)
+	if result.Inventory.Current != "" {
+		detail += "\n当前节点: " + result.Inventory.Current
 	}
 	*steps = append(*steps, ExecStep{
 		Label:   "验证代理节点加载",
@@ -551,7 +340,12 @@ func (m WizardModel) executeImport(filePath string) []ExecStep {
 		Detail:  fmt.Sprintf("已读取 %s (%d bytes)", filePath, len(data)),
 	})
 
-	parsed, err := subscription.Parse(data)
+	runtime := mihomo.NewRuntimeManager()
+	resolver := subscription.NewResolver()
+
+	m.stepResolveRuntimeConfig(runtime, &steps)
+
+	plan, err := resolver.ResolveContent(m.appCfg, data)
 	if err != nil {
 		steps = append(steps, ExecStep{
 			Label:   "解析本地订阅文件",
@@ -564,55 +358,42 @@ func (m WizardModel) executeImport(filePath string) []ExecStep {
 	steps = append(steps, ExecStep{
 		Label:   "解析本地订阅文件",
 		Success: true,
-		Detail:  fmt.Sprintf("检测到 %s，解析出 %d 个节点", parsed.DetectedFormat, len(parsed.Names)),
-	})
-
-	mihomoCfg := core.BuildStaticMihomoConfig(m.appCfg, parsed.Proxies, parsed.Names)
-	steps = append(steps, ExecStep{
-		Label:   "生成静态配置",
-		Success: true,
-		Detail:  "已生成不依赖订阅 URL 的 Mihomo 配置",
+		Detail:  plan.Summary,
 	})
 
 	configPath := filepath.Join(m.appCfg.ConfigDir, "config.yaml")
-	if _, ok := m.stepRenderYAML(mihomoCfg, &steps); !ok {
-		m.controllerAvailable = false
-		return steps
-	}
-	if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
+	if !m.stepWritePlan(plan, configPath, &steps) {
 		m.controllerAvailable = false
 		return steps
 	}
 
-	if err := app.SaveAppConfig(m.appCfg); err != nil {
+	if !m.stepSaveAppConfig(&steps, "提示: 当前使用静态导入配置，后续不会依赖服务器直连订阅 URL") {
+		m.controllerAvailable = false
+		return steps
+	}
+
+	binary, ok := m.stepEnsureBinary(runtime, &steps)
+	if !ok {
+		m.controllerAvailable = false
+		return steps
+	}
+
+	startResult, err := runtime.StartWithBinary(m.appCfg, binary, mihomo.StartOptions{
+		VerifyInventory: true,
+		WaitRetries:     15,
+		WaitInterval:    2 * time.Second,
+	})
+	if err != nil {
+		m.appendStartResult(startResult, &steps)
 		steps = append(steps, ExecStep{
-			Label:   "保存 clashctl 配置",
+			Label:   "启动 Mihomo",
 			Success: false,
 			Detail:  err.Error(),
 		})
-	} else {
-		steps = append(steps, ExecStep{
-			Label:   "保存 clashctl 配置",
-			Success: true,
-			Detail:  "已写入 ~/.config/clashctl/config.yaml\n提示: 当前使用静态导入配置，后续不会依赖服务器直连订阅 URL",
-		})
+		m.controllerAvailable = false
+		return steps
 	}
 
-	m.stepEnsureGeoData(&steps)
-	if m.appCfg.EnableSystemd {
-		binary, binaryOK := m.stepCheckBinary(&steps)
-		if !binaryOK {
-			m.controllerAvailable = false
-			return steps
-		}
-		m.stepSystemd(binary, &steps)
-	} else {
-		m.stepStartProcess(&steps)
-	}
-	m.stepCheckControllerWithRetry(&steps)
-	if m.controllerAvailable {
-		m.stepVerifyProxyInventory(&steps)
-	}
-
+	m.appendStartResult(startResult, &steps)
 	return steps
 }

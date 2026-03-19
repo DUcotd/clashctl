@@ -33,7 +33,7 @@ func (m WizardModel) viewSubscription() string {
 		InfoStyle.Render("推荐直接粘贴订阅 URL；如果服务器拉取失败，也可以填本地文件路径") + "\n" +
 		InfoStyle.Render("默认会自动转换成更适合服务器的静态配置，尽量减少后续问题") + "\n\n" +
 		m.urlInput.View() + "\n\n" +
-		HelpStyle.Render("Enter 一键配置 │ a 高级设置 │ Esc 返回")
+		HelpStyle.Render("Enter 下一步 │ Esc 返回")
 
 	return BoxStyle.Render(content)
 }
@@ -81,10 +81,16 @@ func (m WizardModel) viewAdvanced() string {
 
 func (m WizardModel) viewPreview() string {
 	cfg := m.appCfg
+	sourceLabel := "订阅 URL"
+	sourceValue := cfg.SubscriptionURL
+	if strings.TrimSpace(m.localImportPath) != "" {
+		sourceLabel = "本地订阅文件"
+		sourceValue = m.localImportPath
+	}
 
 	width, _ := m.baseViewportSize()
 	rows := []string{
-		formatKV("订阅 URL", cfg.SubscriptionURL, width),
+		formatKV(sourceLabel, sourceValue, width),
 		formatKV("运行模式", cfg.Mode, width),
 		formatKV("配置目录", cfg.ConfigDir, width),
 		formatKV("控制器地址", cfg.ControllerAddr, width),
@@ -185,10 +191,15 @@ func (m WizardModel) viewGroupSelect() string {
 		return BoxStyle.Render(content)
 	}
 
+	errorBlock := ""
+	if m.loadError != "" {
+		errorBlock = ErrorStyle.Render(m.loadError) + "\n\n"
+	}
+
 	if len(m.groups) == 0 {
-		content := WarningStyle.Render("未找到任何代理组") + "\n\n"
+		content := errorBlock + WarningStyle.Render("未找到任何代理组") + "\n\n"
 		content += InfoStyle.Render("请确认 Mihomo 已启动并且有可用的代理组") + "\n"
-		content += HelpStyle.Render("按 Esc 退出")
+		content += HelpStyle.Render("r 重试 │ Esc 退出")
 		return BoxStyle.Render(content)
 	}
 
@@ -225,11 +236,11 @@ func (m WizardModel) viewGroupSelect() string {
 			BadgeStyle.Render("🔄 fallback") + " 故障转移"
 		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ r 刷新 │ Esc 退出")
 
-		return m.renderSelectablePage(header, list.String(), legend+"\n"+footer, m.groupIndex)
+		return m.renderSelectablePage(header, errorBlock+list.String(), legend+"\n"+footer, m.groupIndex)
 	}
 
 	// Fallback without viewport
-	return BoxStyle.Render(HeaderStyle.Render("选择代理组") + "\n\n" + list.String())
+	return BoxStyle.Render(HeaderStyle.Render("选择代理组") + "\n\n" + errorBlock + list.String())
 }
 
 func (m WizardModel) viewNodeSelect() string {
@@ -245,8 +256,11 @@ func (m WizardModel) viewNodeSelect() string {
 
 	if len(m.nodes) == 0 {
 		content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n"
+		if m.loadError != "" {
+			content += ErrorStyle.Render(m.loadError) + "\n\n"
+		}
 		content += WarningStyle.Render("该组没有可用节点") + "\n"
-		content += HelpStyle.Render("按 Esc 返回")
+		content += HelpStyle.Render("r 重试 │ Esc 返回")
 		return BoxStyle.Render(content)
 	}
 
@@ -293,6 +307,9 @@ func (m WizardModel) viewNodeSelect() string {
 		if m.switchResult != "" {
 			resultLine = "\n" + m.switchResult
 		}
+		if m.loadError != "" {
+			resultLine += "\n" + ErrorStyle.Render(m.loadError)
+		}
 
 		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 
@@ -303,6 +320,9 @@ func (m WizardModel) viewNodeSelect() string {
 	content := HeaderStyle.Render(fmt.Sprintf("代理组: %s", m.selectedGroup)) + "\n\n" + list.String()
 	if m.switchResult != "" {
 		content += "\n" + m.switchResult + "\n"
+	}
+	if m.loadError != "" {
+		content += "\n" + ErrorStyle.Render(m.loadError) + "\n"
 	}
 	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 	return BoxStyle.Render(content)
@@ -464,16 +484,16 @@ func groupIcon(t string) string {
 }
 
 func protocolBadge(p string) string {
-	switch p {
-	case "Vless":
+	switch strings.ToLower(strings.TrimSpace(p)) {
+	case "vless":
 		return ProtocolVlessStyle.Render("Vless")
-	case "Hysteria2":
+	case "hysteria2", "hy2":
 		return ProtocolHy2Style.Render("Hy2")
-	case "Trojan":
+	case "trojan":
 		return ProtocolTrojanStyle.Render("Trojan")
-	case "VMess":
+	case "vmess":
 		return ProtocolVMessStyle.Render("VMess")
-	case "Shadowsocks":
+	case "shadowsocks", "ss":
 		return ProtocolSSStyle.Render("SS")
 	default:
 		return ProtocolUnknownStyle.Render(p)

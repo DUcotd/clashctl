@@ -22,19 +22,7 @@ type URLProbeResult struct {
 }
 
 func directHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			Proxy: nil,
-			DialContext: (&net.Dialer{
-				Timeout:   timeout,
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			ForceAttemptHTTP2:     true,
-			TLSHandshakeTimeout:   timeout,
-			ResponseHeaderTimeout: timeout,
-		},
-	}
+	return NewHTTPClient(timeout, true)
 }
 
 // CheckURLReachable performs an HTTP GET request to verify a URL is accessible.

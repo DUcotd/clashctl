@@ -12,8 +12,16 @@ import (
 
 // FetchJSON fetches a JSON document and decodes it into dest.
 func FetchJSON(url string, timeout time.Duration, dest any) error {
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	return FetchJSONWithDoer(NewHTTPClient(timeout, false), req, dest)
+}
+
+// FetchJSONWithDoer fetches a JSON document with the provided HTTP client.
+func FetchJSONWithDoer(doer HTTPDoer, req *http.Request, dest any) error {
+	resp, err := doer.Do(req)
 	if err != nil {
 		return err
 	}
@@ -32,7 +40,16 @@ func FetchJSON(url string, timeout time.Duration, dest any) error {
 
 // DownloadFile downloads a file from url to destPath.
 func DownloadFile(url, destPath string) error {
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	return DownloadFileWithDoer(NewHTTPClient(5*time.Minute, false), req, destPath)
+}
+
+// DownloadFileWithDoer downloads a file using the provided HTTP client.
+func DownloadFileWithDoer(doer HTTPDoer, req *http.Request, destPath string) error {
+	resp, err := doer.Do(req)
 	if err != nil {
 		return err
 	}

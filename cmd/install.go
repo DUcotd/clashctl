@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -29,24 +30,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Check if already installed
 	if binary, err := mihomo.FindBinary(); err == nil {
 		version, _ := mihomo.GetBinaryVersion()
-		fmt.Printf("Mihomo 已安装: %s", binary)
-		if version != "" {
-			fmt.Printf(" (%s)", version)
-		}
-		fmt.Println()
-
-		// Ask to reinstall
-		fmt.Println("如需重新安装，请先卸载当前版本")
+		printInstallStatus(os.Stdout, binary, version)
 		return nil
 	}
 
 	// Download and install
-	if _, err := mihomo.InstallMihomo(); err != nil {
+	result, err := mihomo.InstallMihomo()
+	if err != nil {
 		return fmt.Errorf("安装失败: %w", err)
 	}
-
-	fmt.Println("")
-	fmt.Println("💡 运行 'sudo clashctl init' 开始配置")
+	printInstallResult(os.Stdout, result)
 
 	return nil
 }

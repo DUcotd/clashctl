@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/app"
-	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 	"clashctl/internal/subscription"
@@ -59,11 +58,6 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("读取订阅文件失败: %w", err)
 	}
 
-	parsed, err := subscription.Parse(data)
-	if err != nil {
-		return fmt.Errorf("解析订阅文件失败: %w", err)
-	}
-
 	cfg := core.DefaultAppConfig()
 	if importApply || importStart {
 		loaded, err := loadAppConfig()
@@ -76,14 +70,28 @@ func runImport(cmd *cobra.Command, args []string) error {
 	cfg.Mode = importMode
 	cfg.MixedPort = importMixedPort
 
-	mihomoCfg := core.BuildStaticMihomoConfig(cfg, parsed.Proxies, parsed.Names)
+	runtime := mihomo.NewRuntimeManager()
+	if importApply || importStart {
+		resolved, warnings := runtime.ResolveConfig(cfg)
+		cfg = resolved
+		for _, warning := range warnings {
+			fmt.Printf("⚠️  %s\n", warning)
+		}
+	}
+
+	resolver := subscription.NewResolver()
+	plan, err := resolver.ResolveContent(cfg, data)
+	if err != nil {
+		return fmt.Errorf("解析订阅文件失败: %w", err)
+	}
+
 	outputPath := importOutput
 	if importApply || importStart {
 		outputPath = filepath.Join(cfg.ConfigDir, "config.yaml")
 		if err := system.EnsureDir(cfg.ConfigDir); err != nil {
 			return fmt.Errorf("创建配置目录失败: %w", err)
 		}
-		backupPath, err := config.SaveMihomoConfig(mihomoCfg, outputPath)
+		backupPath, err := plan.Save(outputPath)
 		if err != nil {
 			return fmt.Errorf("写入配置文件失败: %w", err)
 		}
@@ -95,7 +103,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			fmt.Printf("   已备份旧配置: %s\n", backupPath)
 		}
 	} else {
-		yamlData, err := core.RenderYAML(mihomoCfg)
+		yamlData, err := plan.RenderYAML()
 		if err != nil {
 			return fmt.Errorf("YAML 渲染失败: %w", err)
 		}
@@ -105,53 +113,26 @@ func runImport(cmd *cobra.Command, args []string) error {
 		fmt.Printf("✅ 配置已导出到: %s\n", outputPath)
 	}
 
-	fmt.Printf("   来源格式: %s\n", parsed.DetectedFormat)
+	fmt.Printf("   来源格式: %s\n", plan.DetectedFormat)
 	fmt.Printf("   读取来源: %s\n", sourceDesc)
-	fmt.Printf("   节点数量: %d\n", len(parsed.Names))
+	if plan.ProxyCount > 0 {
+		fmt.Printf("   节点数量: %d\n", plan.ProxyCount)
+	}
 	fmt.Printf("   模式: %s\n", cfg.Mode)
-	fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
+	if plan.Kind != subscription.PlanKindProvider {
+		fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
+	}
 
 	if importStart {
 		fmt.Println("🚀 正在启动 Mihomo...")
-		if mihomo.HasSystemd() {
-			if active, _ := mihomo.ServiceStatus(mihomo.DefaultServiceName); active {
-				if err := mihomo.StopService(mihomo.DefaultServiceName); err == nil {
-					fmt.Println("🧹 已停止旧的 systemd 服务")
-				}
-			}
-		}
-		if stopped, err := mihomo.StopManagedProcess(cfg.ConfigDir); err == nil && stopped {
-			fmt.Println("🧹 已清理旧进程")
-		}
-		startedBySystemd := false
-		if cfg.EnableSystemd && mihomo.HasSystemd() {
-			if binary, err := mihomo.FindBinary(); err == nil {
-				svcCfg := mihomo.ServiceConfig{
-					Binary:      binary,
-					ConfigDir:   cfg.ConfigDir,
-					ServiceName: mihomo.DefaultServiceName,
-				}
-				if err := mihomo.SetupSystemd(svcCfg, cfg.AutoStart, true); err == nil {
-					startedBySystemd = true
-					fmt.Println("✅ 通过 systemd 启动成功")
-				}
-			}
-		}
-		if !startedBySystemd {
-			proc := mihomo.NewProcess(cfg.ConfigDir)
-			if err := proc.Start(); err != nil {
-				return fmt.Errorf("启动失败: %w", err)
-			}
-		}
-		client := mihomo.NewClient("http://" + cfg.ControllerAddr)
-		if err := mihomo.WaitForController(cfg.ControllerAddr, 15, 2*time.Second); err != nil {
-			return fmt.Errorf("Controller API 未就绪: %w", err)
-		}
-		if inv, err := client.InspectProxyInventory("PROXY"); err == nil {
-			fmt.Printf("✅ Mihomo 已启动，PROXY 已加载 %d 个节点\n", inv.Loaded)
-			if inv.Current != "" {
-				fmt.Printf("   当前节点: %s\n", inv.Current)
-			}
+		result, err := runtime.Start(cfg, mihomo.StartOptions{
+			VerifyInventory: true,
+			WaitRetries:     15,
+			WaitInterval:    2 * time.Second,
+		})
+		printRuntimeStartResult(os.Stdout, result)
+		if err != nil {
+			return err
 		}
 	}
 

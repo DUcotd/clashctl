@@ -1,6 +1,7 @@
 package system
 
 import (
+	"net"
 	"reflect"
 	"testing"
 )
@@ -40,9 +41,14 @@ func TestIsRoot(t *testing.T) {
 }
 
 func TestCheckPortInUse(t *testing.T) {
-	// A high port should be available
-	if CheckPortInUse("127.0.0.1:19999") {
-		t.Error("high port 19999 should be available")
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("sandbox does not allow local listeners: %v", err)
+	}
+	defer ln.Close()
+
+	if !CheckPortInUse(ln.Addr().String()) {
+		t.Error("listening port should be reported as in use")
 	}
 }
 

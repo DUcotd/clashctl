@@ -3,6 +3,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -38,7 +39,9 @@ type WizardModel struct {
 	execError         string
 	canImportFallback bool
 	importHint        string
+	localImportPath   string
 	importInput       textinput.Model
+	loadError         string
 
 	// Controller availability (set after execution)
 	controllerAvailable bool
@@ -201,6 +204,8 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case executionDoneMsg:
 		m.execSteps = msg.steps
 		m.controllerAvailable = msg.controllerReady
+		m.canImportFallback = msg.canImport
+		m.importHint = msg.importHint
 		m.setScreen(ScreenResult)
 		return m, nil
 	case groupsLoadedMsg:
@@ -316,19 +321,12 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if input == "" {
 			return m, nil
 		}
-		m.appCfg.Mode = "mixed"
 		if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
 			m.appCfg.SubscriptionURL = input
-			m.setScreen(ScreenExecution)
-			return m, tea.Batch(m.spinner.Tick, m.runExecution())
-		}
-		m.importInput.SetValue(input)
-		m.setScreen(ScreenExecution)
-		return m, tea.Batch(m.spinner.Tick, m.runImportExecution(input))
-	case "a":
-		input := strings.TrimSpace(m.urlInput.Value())
-		if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
-			m.appCfg.SubscriptionURL = input
+			m.localImportPath = ""
+		} else {
+			m.localImportPath = input
+			m.appCfg.SubscriptionURL = ""
 		}
 		m.setScreen(ScreenMode)
 		return m, nil
@@ -429,6 +427,9 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		m.setScreen(ScreenExecution)
+		if strings.TrimSpace(m.localImportPath) != "" {
+			return m, tea.Batch(m.spinner.Tick, m.runImportExecution(m.localImportPath))
+		}
 		return m, tea.Batch(m.spinner.Tick, m.runExecution())
 	case "esc":
 		m.setScreen(ScreenAdvanced)
@@ -441,31 +442,36 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m WizardModel) runExecution() tea.Cmd {
 	return func() tea.Msg {
 		steps := m.executeFull()
-		m.detectImportFallback(steps)
-		controllerReady := m.controllerAvailable
-		return executionDoneMsg{steps: steps, controllerReady: controllerReady}
+		canImport, importHint := detectImportFallback(steps)
+		return executionDoneMsg{
+			steps:           steps,
+			controllerReady: m.controllerAvailable,
+			canImport:       canImport,
+			importHint:      importHint,
+		}
 	}
 }
 
 func (m WizardModel) runImportExecution(filePath string) tea.Cmd {
 	return func() tea.Msg {
 		steps := m.executeImport(filePath)
-		m.detectImportFallback(steps)
-		controllerReady := m.controllerAvailable
-		return executionDoneMsg{steps: steps, controllerReady: controllerReady}
+		canImport, importHint := detectImportFallback(steps)
+		return executionDoneMsg{
+			steps:           steps,
+			controllerReady: m.controllerAvailable,
+			canImport:       canImport,
+			importHint:      importHint,
+		}
 	}
 }
 
-func (m *WizardModel) detectImportFallback(steps []ExecStep) {
-	m.canImportFallback = false
-	m.importHint = ""
+func detectImportFallback(steps []ExecStep) (bool, string) {
 	for _, step := range steps {
 		if step.Label == "验证代理节点加载" && !step.Success {
-			m.canImportFallback = true
-			m.importHint = step.Detail
-			return
+			return true, step.Detail
 		}
 	}
+	return false, ""
 }
 
 func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -478,6 +484,7 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Go to node selection instead of quitting
 			m.loading = true
 			m.loadingMsg = "正在加载代理组..."
+			m.loadError = ""
 			m.setScreen(ScreenGroupSelect)
 			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 		}
@@ -496,6 +503,7 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.controllerAvailable {
 			m.loading = true
 			m.loadingMsg = "正在加载代理组..."
+			m.loadError = ""
 			m.setScreen(ScreenGroupSelect)
 			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 		}
@@ -578,6 +586,7 @@ func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.selectedGroup = m.groups[m.groupIndex].Name
 			m.loading = true
 			m.loadingMsg = "正在加载节点..."
+			m.loadError = ""
 			m.nodeIndex = 0
 			return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 		}
@@ -585,6 +594,7 @@ func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Refresh groups
 		m.loading = true
 		m.loadingMsg = "正在刷新代理组..."
+		m.loadError = ""
 		return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 	case "esc":
 		m.quitting = true
@@ -641,6 +651,7 @@ func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Refresh nodes
 		m.loading = true
 		m.loadingMsg = "正在刷新节点..."
+		m.loadError = ""
 		return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 	case "esc":
 		// Back to group list
@@ -670,6 +681,9 @@ func (m WizardModel) loadGroups() tea.Cmd {
 				NodeCount: len(g.All),
 			})
 		}
+		sort.Slice(items, func(i, j int) bool {
+			return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+		})
 
 		return groupsLoadedMsg{groups: items}
 	}
@@ -719,9 +733,10 @@ func (m WizardModel) switchNode(groupName, nodeName string) tea.Cmd {
 func (m WizardModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != "" {
-		m.groups = nil
+		m.loadError = "加载代理组失败: " + msg.err
 		return m, nil
 	}
+	m.loadError = ""
 	m.groups = msg.groups
 	m.groupIndex = 0
 	return m, nil
@@ -730,9 +745,10 @@ func (m WizardModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, tea.Cmd
 func (m WizardModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != "" {
-		m.nodes = nil
+		m.loadError = "加载节点失败: " + msg.err
 		return m, nil
 	}
+	m.loadError = ""
 	m.nodes = msg.nodes
 	m.nodeIndex = 0
 	// Move to the currently selected node
@@ -750,6 +766,7 @@ func (m WizardModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd
 	m.loading = false
 	m.switchSuccess = msg.success
 	if msg.success {
+		m.loadError = ""
 		m.switchResult = "✅ 节点切换成功！"
 		// Update the selected state in node list
 		for i := range m.nodes {
@@ -768,6 +785,7 @@ func (m WizardModel) handleNodeTested(msg nodeTestedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.testing = false
+	m.loadError = ""
 	m.switchResult = fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", len(msg.delays))
 	return m, nil
 }
