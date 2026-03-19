@@ -61,8 +61,9 @@ type WizardModel struct {
 	testDone  int
 
 	// Viewport for scrollable lists
-	vp      viewport.Model
-	vpReady bool
+	vp            viewport.Model
+	vpReady       bool
+	screenOffsets map[Screen]int
 }
 
 // ExecStep represents a single execution step result.
@@ -167,6 +168,7 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 		advancedInputs: advInputs,
 		spinner:        s,
 		importInput:    importInput,
+		screenOffsets:  make(map[Screen]int),
 	}
 }
 
@@ -181,29 +183,14 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-
-		// Initialize or update viewport for scrollable lists
-		headerHeight := 5 // title + step indicator + padding
-		footerHeight := 3 // help text + padding
-		vpHeight := msg.Height - headerHeight - footerHeight
-		if vpHeight < 5 {
-			vpHeight = 5
-		}
-
-		if !m.vpReady {
-			m.vp = viewport.New(msg.Width, vpHeight)
-			m.vpReady = true
-		} else {
-			m.vp.Width = msg.Width
-			m.vp.Height = vpHeight
-		}
-
+		m.ensureViewport()
 		return m, nil
 	case tea.MouseMsg:
 		// Forward mouse events (scroll wheel) to viewport
-		if m.vpReady && (m.screen == ScreenGroupSelect || m.screen == ScreenNodeSelect) {
+		if m.usesViewport() {
 			var cmd tea.Cmd
 			m.vp, cmd = m.vp.Update(msg)
+			m.screenOffsets[m.screen] = m.vp.YOffset
 			return m, cmd
 		}
 		return m, nil
@@ -214,7 +201,7 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case executionDoneMsg:
 		m.execSteps = msg.steps
 		m.controllerAvailable = msg.controllerReady
-		m.screen = ScreenResult
+		m.setScreen(ScreenResult)
 		return m, nil
 	case groupsLoadedMsg:
 		return m.handleGroupsLoaded(msg)
@@ -261,10 +248,59 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *WizardModel) ensureViewport() {
+	if !m.vpReady {
+		m.vp = viewport.New(1, 1)
+		m.vpReady = true
+	}
+	innerWidth, innerHeight := m.baseViewportSize()
+	m.vp.Width = innerWidth
+	m.vp.Height = innerHeight
+	if off, ok := m.screenOffsets[m.screen]; ok {
+		m.vp.SetYOffset(off)
+	}
+}
+
+func (m *WizardModel) setScreen(screen Screen) {
+	if m.vpReady {
+		m.screenOffsets[m.screen] = m.vp.YOffset
+	}
+	m.screen = screen
+	if m.vpReady {
+		m.ensureViewport()
+	}
+}
+
+func (m WizardModel) usesViewport() bool {
+	switch m.screen {
+	case ScreenWelcome, ScreenMode, ScreenPreview, ScreenResult, ScreenGroupSelect, ScreenNodeSelect:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m WizardModel) baseViewportSize() (int, int) {
+	innerWidth := max(24, m.width-BoxStyle.GetHorizontalFrameSize()-4)
+	topChrome := 4
+	if m.screen != ScreenWelcome {
+		topChrome = 6
+	}
+	innerHeight := max(6, m.height-topChrome-BoxStyle.GetVerticalFrameSize()-2)
+	return innerWidth, innerHeight
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func (m WizardModel) updateWelcome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
-		m.screen = ScreenSubscription
+		m.setScreen(ScreenSubscription)
 		return m, nil
 	case "q", "esc":
 		m.quitting = true
@@ -281,10 +317,10 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.appCfg.SubscriptionURL = url
-		m.screen = ScreenMode
+		m.setScreen(ScreenMode)
 		return m, nil
 	case "esc":
-		m.screen = ScreenWelcome
+		m.setScreen(ScreenWelcome)
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -295,6 +331,9 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m WizardModel) updateMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "pgup", "pgdown", "home", "end":
+		m.scrollViewport(msg.String())
+		return m, nil
 	case "up", "k":
 		if m.modeIndex > 0 {
 			m.modeIndex--
@@ -309,10 +348,10 @@ func (m WizardModel) updateMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.appCfg.Mode = "mixed"
 		}
-		m.screen = ScreenAdvanced
+		m.setScreen(ScreenAdvanced)
 		return m, nil
 	case "esc":
-		m.screen = ScreenSubscription
+		m.setScreen(ScreenSubscription)
 		return m, nil
 	}
 	return m, nil
@@ -330,10 +369,10 @@ func (m WizardModel) updateAdvanced(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		m.collectAdvancedValues()
-		m.screen = ScreenPreview
+		m.setScreen(ScreenPreview)
 		return m, nil
 	case "esc":
-		m.screen = ScreenMode
+		m.setScreen(ScreenMode)
 		return m, nil
 	default:
 		if m.advancedIndex < len(m.advancedInputs) {
@@ -372,11 +411,14 @@ func (m *WizardModel) collectAdvancedValues() {
 
 func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
+		m.scrollViewport(msg.String())
+		return m, nil
 	case "enter":
-		m.screen = ScreenExecution
+		m.setScreen(ScreenExecution)
 		return m, tea.Batch(m.spinner.Tick, m.runExecution())
 	case "esc":
-		m.screen = ScreenAdvanced
+		m.setScreen(ScreenAdvanced)
 		return m, nil
 	}
 	return m, nil
@@ -415,12 +457,15 @@ func (m *WizardModel) detectImportFallback(steps []ExecStep) {
 
 func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
+		m.scrollViewport(msg.String())
+		return m, nil
 	case "enter", "q":
 		if m.controllerAvailable {
 			// Go to node selection instead of quitting
 			m.loading = true
 			m.loadingMsg = "正在加载代理组..."
-			m.screen = ScreenGroupSelect
+			m.setScreen(ScreenGroupSelect)
 			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 		}
 		m.quitting = true
@@ -428,7 +473,7 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		if m.canImportFallback {
 			m.importInput.Focus()
-			m.screen = ScreenImportLocal
+			m.setScreen(ScreenImportLocal)
 			return m, nil
 		}
 	case "esc":
@@ -438,11 +483,32 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.controllerAvailable {
 			m.loading = true
 			m.loadingMsg = "正在加载代理组..."
-			m.screen = ScreenGroupSelect
+			m.setScreen(ScreenGroupSelect)
 			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 		}
 	}
 	return m, nil
+}
+
+func (m *WizardModel) scrollViewport(key string) {
+	if !m.vpReady {
+		return
+	}
+	switch key {
+	case "up", "k":
+		m.vp.LineUp(1)
+	case "down", "j":
+		m.vp.LineDown(1)
+	case "pgup":
+		m.vp.HalfViewUp()
+	case "pgdown":
+		m.vp.HalfViewDown()
+	case "home":
+		m.vp.GotoTop()
+	case "end":
+		m.vp.GotoBottom()
+	}
+	m.screenOffsets[m.screen] = m.vp.YOffset
 }
 
 func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -452,12 +518,12 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if path == "" {
 			return m, nil
 		}
-		m.screen = ScreenExecution
+		m.setScreen(ScreenExecution)
 		m.importInput.Blur()
 		return m, tea.Batch(m.spinner.Tick, m.runImportExecution(path))
 	case "esc":
 		m.importInput.Blur()
-		m.screen = ScreenResult
+		m.setScreen(ScreenResult)
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -565,7 +631,7 @@ func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 	case "esc":
 		// Back to group list
-		m.screen = ScreenGroupSelect
+		m.setScreen(ScreenGroupSelect)
 		m.switchResult = ""
 		return m, nil
 	}
@@ -663,7 +729,7 @@ func (m WizardModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.Cmd) 
 			break
 		}
 	}
-	m.screen = ScreenNodeSelect
+	m.setScreen(ScreenNodeSelect)
 	return m, nil
 }
 

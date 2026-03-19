@@ -11,23 +11,21 @@ import (
 )
 
 func (m WizardModel) viewWelcome() string {
-	content := `
-欢迎使用 clashctl — Mihomo TUN 交互式配置工具
-
-这个向导将帮助你：
-
-  • 输入机场订阅 URL
-  • 选择代理运行模式 (TUN / mixed-port)
-  • 调整高级设置（可选）
-  • 自动生成并写入 Mihomo 配置
-  • 启动 Mihomo 服务
-  • 选择代理组和节点
-
-  你只需要一个订阅链接，剩下的我们来搞定。
-
-` + HelpStyle.Render("按 Enter 开始 │ 按 Esc / q 退出")
-
-	return BoxStyle.Render(content)
+	body := strings.Join([]string{
+		"欢迎使用 clashctl — Mihomo 交互式配置工具",
+		"",
+		"这个向导将帮助你：",
+		"",
+		"• 输入机场订阅 URL 或后续改走本地订阅导入",
+		"• 选择 TUN / mixed-port 运行模式",
+		"• 调整高级设置（可选）",
+		"• 自动生成并写入 Mihomo 配置",
+		"• 启动 Mihomo 并验证节点是否真正加载",
+		"• 进入代理组和节点管理",
+		"",
+		"如果服务器拉不到订阅，向导会自动提示本地导入静态配置。",
+	}, "\n")
+	return m.renderScrollablePage("开始使用", body, "Enter 开始 │ Esc / q 退出")
 }
 
 func (m WizardModel) viewSubscription() string {
@@ -42,26 +40,25 @@ func (m WizardModel) viewSubscription() string {
 func (m WizardModel) viewMode() string {
 	options := []string{"TUN 模式（全局代理，需 root）", "mixed-port 模式（推荐，兼容性好）"}
 
-	content := HeaderStyle.Render("选择代理运行模式") + "\n\n"
+	var lines []string
+	lines = append(lines, "选择代理运行模式", "")
 
 	for i, opt := range options {
 		if i == m.modeIndex {
-			content += SelectedStyle.Render("▸ "+opt) + "\n"
+			lines = append(lines, SelectedStyle.Render("▸ "+opt))
 		} else {
-			content += UnselectedStyle.Render("  "+opt) + "\n"
+			lines = append(lines, UnselectedStyle.Render("  "+opt))
 		}
 	}
 
-	content += "\n" + InfoStyle.Render("mixed-port 模式：提供本地代理端口 7890，兼容性最好")
-	content += "\n" + InfoStyle.Render("TUN 模式：接管全部流量，但 DNS 劫持在部分环境有兼容问题")
+	lines = append(lines, "", InfoStyle.Render("mixed-port 模式：提供本地代理端口，兼容性最好；服务器流量需显式走代理"))
+	lines = append(lines, InfoStyle.Render("TUN 模式：接管整机流量，但依赖 /dev/net/tun、iptables 和更严格的环境条件"))
 
 	if !mihomo.CanUseTUN() {
-		content += "\n\n" + WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用")
+		lines = append(lines, "", WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用"))
 	}
 
-	content += "\n\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 确认 │ Esc 返回")
-
-	return BoxStyle.Render(content)
+	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ PgUp/PgDn 滚动 │ Enter 确认 │ Esc 返回")
 }
 
 func (m WizardModel) viewAdvanced() string {
@@ -84,21 +81,21 @@ func (m WizardModel) viewAdvanced() string {
 func (m WizardModel) viewPreview() string {
 	cfg := m.appCfg
 
-	content := HeaderStyle.Render("请确认以下配置") + "\n\n"
-	content += TextStyle.Render("订阅 URL:    ") + InputStyle.Render(cfg.SubscriptionURL) + "\n"
-	content += TextStyle.Render("运行模式:    ") + InputStyle.Render(cfg.Mode) + "\n"
-	content += TextStyle.Render("配置目录:    ") + InputStyle.Render(cfg.ConfigDir) + "\n"
-	content += TextStyle.Render("控制器地址:  ") + InputStyle.Render(cfg.ControllerAddr) + "\n"
-	content += TextStyle.Render("mixed-port:  ") + InputStyle.Render(fmt.Sprintf("%d", cfg.MixedPort)) + "\n"
-	content += TextStyle.Render("Provider:    ") + InputStyle.Render(cfg.ProviderPath) + "\n"
-	content += TextStyle.Render("健康检查:    ") + InputStyle.Render(boolToYesNo(cfg.EnableHealthCheck)) + "\n"
-	content += TextStyle.Render("systemd:     ") + InputStyle.Render(boolToYesNo(cfg.EnableSystemd)) + "\n"
-	content += TextStyle.Render("自动启动:    ") + InputStyle.Render(boolToYesNo(cfg.AutoStart)) + "\n"
-
-	content += "\n" + InfoStyle.Render("首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB）")
-	content += "\n" + HelpStyle.Render("Enter 确认并开始配置 │ Esc 返回修改")
-
-	return BoxStyle.Render(content)
+	width, _ := m.baseViewportSize()
+	rows := []string{
+		formatKV("订阅 URL", cfg.SubscriptionURL, width),
+		formatKV("运行模式", cfg.Mode, width),
+		formatKV("配置目录", cfg.ConfigDir, width),
+		formatKV("控制器地址", cfg.ControllerAddr, width),
+		formatKV("mixed-port", fmt.Sprintf("%d", cfg.MixedPort), width),
+		formatKV("Provider", cfg.ProviderPath, width),
+		formatKV("健康检查", boolToYesNo(cfg.EnableHealthCheck), width),
+		formatKV("systemd", boolToYesNo(cfg.EnableSystemd), width),
+		formatKV("自动启动", boolToYesNo(cfg.AutoStart), width),
+		"",
+		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
+	}
+	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 确认并开始配置 │ Esc 返回修改")
 }
 
 func (m WizardModel) viewExecution() string {
@@ -116,53 +113,69 @@ func (m WizardModel) viewExecution() string {
 }
 
 func (m WizardModel) viewResult() string {
-	content := HeaderStyle.Render("执行结果") + "\n\n"
-
 	allSuccess := true
+	width, _ := m.baseViewportSize()
+	var body strings.Builder
 	for _, step := range m.execSteps {
 		if step.Success {
-			content += SuccessStyle.Render("✅ "+step.Label) + "\n"
+			body.WriteString(SuccessStyle.Render("✅ " + step.Label))
+			body.WriteString("\n")
 		} else {
-			content += ErrorStyle.Render("❌ "+step.Label) + "\n"
+			body.WriteString(ErrorStyle.Render("❌ " + step.Label))
+			body.WriteString("\n")
 			allSuccess = false
 		}
 		if step.Detail != "" {
-			content += InfoStyle.Render("   "+step.Detail) + "\n"
+			for _, line := range wrapText(step.Detail, max(20, width-4)) {
+				body.WriteString(InfoStyle.Render("   " + line))
+				body.WriteString("\n")
+			}
 		}
 	}
 
-	content += "\n"
+	body.WriteString("\n")
 	if allSuccess {
-		content += SuccessStyle.Render("🎉 配置完成！Mihomo 已配置就绪。") + "\n"
+		body.WriteString(SuccessStyle.Render("🎉 配置完成！Mihomo 已配置就绪。"))
+		body.WriteString("\n")
 	} else {
-		content += WarningStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。") + "\n"
+		body.WriteString(WarningStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。"))
+		body.WriteString("\n")
 	}
 
+	footer := "↑/↓ 滚动 │ Enter 继续 │ Esc 退出"
 	if m.controllerAvailable {
-		content += "\n" + InfoStyle.Render("Controller API 可用，可以管理节点。") + "\n"
-		content += HelpStyle.Render("按 Enter/n 进入节点管理 │ 按 Esc 退出")
+		body.WriteString("\n")
+		body.WriteString(InfoStyle.Render("Controller API 可用，可以管理节点。"))
+		body.WriteString("\n")
+		footer = "↑/↓ 滚动 │ Enter/n 进入节点管理 │ Esc 退出"
 	} else {
 		if m.canImportFallback {
-			content += "\n" + WarningStyle.Render("检测到订阅未成功加载，可切换为本地导入。") + "\n"
-			content += InfoStyle.Render("先在本地下载/解码订阅文件，再在下一步输入文件路径。") + "\n"
-			content += HelpStyle.Render("按 i 导入本地订阅文件 │ 按 Enter/Esc 退出")
-			return BoxStyle.Render(content)
+			body.WriteString("\n")
+			body.WriteString(WarningStyle.Render("检测到订阅未成功加载，可切换为本地导入。"))
+			body.WriteString("\n")
+			body.WriteString(InfoStyle.Render("先在本地下载/解码订阅文件，再输入文件路径。"))
+			body.WriteString("\n")
+			footer = "↑/↓ 滚动 │ i 导入本地订阅文件 │ Enter/Esc 退出"
+			return m.renderScrollablePage("执行结果", body.String(), footer)
 		}
-		content += "\n" + InfoStyle.Render("使用 'clashctl start' 启动服务") + "\n"
-		content += InfoStyle.Render("使用 'clashctl doctor' 检查环境") + "\n"
-		content += HelpStyle.Render("按 Enter 退出")
+		body.WriteString("\n")
+		body.WriteString(InfoStyle.Render("使用 'clashctl start' 启动服务"))
+		body.WriteString("\n")
+		body.WriteString(InfoStyle.Render("使用 'clashctl doctor' 检查环境"))
+		body.WriteString("\n")
 	}
 
-	return BoxStyle.Render(content)
+	return m.renderScrollablePage("执行结果", body.String(), footer)
 }
 
 func (m WizardModel) viewImportLocal() string {
-	content := HeaderStyle.Render("导入本地订阅文件") + "\n\n"
-	content += InfoStyle.Render("检测到服务器无法成功拉取订阅，建议改用本地导入。") + "\n"
-	content += InfoStyle.Render("支持两类文件：base64 原始订阅，或解码后的 vless:// / trojan:// / hysteria2:// 链接列表。") + "\n\n"
-	content += TextStyle.Render("文件路径: ") + m.importInput.View() + "\n\n"
-	content += HelpStyle.Render("Enter 开始导入 │ Esc 返回结果页")
-	return BoxStyle.Render(content)
+	content := strings.Join([]string{
+		InfoStyle.Render("检测到服务器无法成功拉取订阅，建议改用本地导入。"),
+		InfoStyle.Render("支持两类文件：base64 原始订阅，或解码后的 vless:// / trojan:// / hysteria2:// 链接列表。"),
+		"",
+		TextStyle.Render("文件路径: ") + m.importInput.View(),
+	}, "\n")
+	return m.renderStaticCard("导入本地订阅文件", content, "Enter 开始导入 │ Esc 返回结果页")
 }
 
 func (m WizardModel) viewGroupSelect() string {
@@ -211,7 +224,7 @@ func (m WizardModel) viewGroupSelect() string {
 			BadgeStyle.Render("🔄 fallback") + " 故障转移"
 		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 查看节点 │ r 刷新 │ Esc 退出")
 
-		return BoxStyle.Render(header + "\n\n" + m.vp.View() + "\n" + legend + "\n" + footer)
+		return m.renderSelectablePage(header, list.String(), legend+"\n"+footer, m.groupIndex)
 	}
 
 	// Fallback without viewport
@@ -282,7 +295,7 @@ func (m WizardModel) viewNodeSelect() string {
 
 		footer := HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 
-		return BoxStyle.Render(header + "\n\n" + m.vp.View() + resultLine + "\n" + footer)
+		return m.renderSelectablePage(header, list.String()+resultLine, footer, m.nodeIndex)
 	}
 
 	// Fallback without viewport
@@ -292,6 +305,131 @@ func (m WizardModel) viewNodeSelect() string {
 	}
 	content += "\n" + HelpStyle.Render("↑/↓ 选择 │ Enter 切换 │ t 测试延迟 │ r 刷新 │ Esc 返回")
 	return BoxStyle.Render(content)
+}
+
+func (m WizardModel) renderStaticCard(header, body, footer string) string {
+	content := HeaderStyle.Render(header) + "\n\n" + body
+	if footer != "" {
+		content += "\n\n" + HelpStyle.Render(footer)
+	}
+	return BoxStyle.Render(content)
+}
+
+func (m WizardModel) renderScrollablePage(header, body, footer string) string {
+	if !m.vpReady {
+		return m.renderStaticCard(header, body, footer)
+	}
+	innerWidth, innerHeight := m.baseViewportSize()
+	vp := m.vp
+	vp.Width = innerWidth
+	headerBlock := HeaderStyle.Render(header)
+	footerBlock := HelpStyle.Render(footer)
+	contentHeight := max(5, innerHeight-lineCount(headerBlock)-lineCount(footerBlock)-2)
+	vp.Height = contentHeight
+	vp.SetContent(body)
+	if off, ok := m.screenOffsets[m.screen]; ok {
+		vp.SetYOffset(off)
+	}
+	scrollHint := ""
+	if vp.TotalLineCount() > vp.Height {
+		scrollHint = InfoStyle.Render(fmt.Sprintf("位置 %d/%d", min(vp.YOffset+vp.Height, vp.TotalLineCount()), vp.TotalLineCount())) + "\n"
+	}
+	content := headerBlock + "\n\n" + vp.View()
+	if footer != "" {
+		content += "\n" + scrollHint + footerBlock
+	}
+	return BoxStyle.Render(content)
+}
+
+func (m WizardModel) renderSelectablePage(header, body, footer string, selectedIndex int) string {
+	if !m.vpReady {
+		return m.renderStaticCard(header, body, footer)
+	}
+	innerWidth, innerHeight := m.baseViewportSize()
+	vp := m.vp
+	vp.Width = innerWidth
+	headerBlock := HeaderStyle.Render(header)
+	footerBlock := HelpStyle.Render(footer)
+	contentHeight := max(5, innerHeight-lineCount(headerBlock)-lineCount(footerBlock)-2)
+	vp.Height = contentHeight
+	vp.SetContent(body)
+	if selectedIndex < vp.YOffset {
+		vp.SetYOffset(selectedIndex)
+	} else if selectedIndex >= vp.YOffset+vp.Height {
+		vp.SetYOffset(selectedIndex - vp.Height + 1)
+	} else if off, ok := m.screenOffsets[m.screen]; ok {
+		vp.SetYOffset(off)
+	}
+	scrollHint := ""
+	if vp.TotalLineCount() > vp.Height {
+		scrollHint = InfoStyle.Render(fmt.Sprintf("位置 %d/%d", min(vp.YOffset+vp.Height, vp.TotalLineCount()), vp.TotalLineCount())) + "\n"
+	}
+	content := headerBlock + "\n\n" + vp.View()
+	if footer != "" {
+		content += "\n" + scrollHint + footerBlock
+	}
+	return BoxStyle.Render(content)
+}
+
+func lineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+func formatKV(label, value string, width int) string {
+	wrapped := wrapText(value, max(20, width-len([]rune(label))-4))
+	if len(wrapped) == 0 {
+		return TextStyle.Render(label + ":")
+	}
+	var out strings.Builder
+	for i, line := range wrapped {
+		if i == 0 {
+			out.WriteString(TextStyle.Render(label + ": "))
+			out.WriteString(InputStyle.Render(line))
+		} else {
+			out.WriteString("\n")
+			out.WriteString(strings.Repeat(" ", len([]rune(label))+2))
+			out.WriteString(InputStyle.Render(line))
+		}
+	}
+	return out.String()
+}
+
+func wrapText(text string, width int) []string {
+	if width < 8 {
+		return []string{text}
+	}
+	var out []string
+	for _, rawLine := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line := strings.TrimRight(rawLine, " ")
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		for len([]rune(line)) > width {
+			cut := width
+			runes := []rune(line)
+			for i := width; i > width/2; i-- {
+				if runes[i] == ' ' {
+					cut = i
+					break
+				}
+			}
+			out = append(out, strings.TrimSpace(string(runes[:cut])))
+			line = strings.TrimSpace(string(runes[cut:]))
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func delayStyle(delay int) lipgloss.Style {

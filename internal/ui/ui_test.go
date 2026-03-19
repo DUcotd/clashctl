@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"clashctl/internal/core"
@@ -19,6 +20,7 @@ func TestScreenStepLabel(t *testing.T) {
 		{ScreenPreview, "步骤 4/8: 配置预览"},
 		{ScreenExecution, "步骤 5/8: 正在配置..."},
 		{ScreenResult, "步骤 6/8: 执行结果"},
+		{ScreenImportLocal, "步骤 6/8: 导入本地订阅"},
 		{ScreenGroupSelect, "步骤 7/8: 选择代理组"},
 		{ScreenNodeSelect, "步骤 8/8: 选择节点"},
 		{ScreenDone, ""},
@@ -30,6 +32,25 @@ func TestScreenStepLabel(t *testing.T) {
 				t.Errorf("StepLabel() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestWrapText(t *testing.T) {
+	got := wrapText("Controller API 已就绪，但订阅节点未成功加载 provider 文件不存在或为空", 16)
+	if len(got) < 3 {
+		t.Fatalf("wrapText should split long text, got %#v", got)
+	}
+}
+
+func TestRenderScrollablePage(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.width = 80
+	wizard.height = 24
+	wizard.ensureViewport()
+	wizard.screen = ScreenResult
+	view := wizard.renderScrollablePage("测试标题", strings.Repeat("一二三四五六七八九十\n", 20), "帮助")
+	if !strings.Contains(view, "测试标题") || !strings.Contains(view, "帮助") {
+		t.Fatalf("renderScrollablePage missing header/footer: %s", view)
 	}
 }
 
