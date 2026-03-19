@@ -6,8 +6,12 @@ import (
 	"os"
 	"text/template"
 
+	"clashctl/internal/core"
 	"clashctl/internal/system"
 )
+
+// DefaultServiceName is the managed systemd service name.
+const DefaultServiceName = core.DefaultServiceName
 
 const serviceTemplate = `[Unit]
 Description=Mihomo Proxy Service (managed by clashctl)
@@ -27,8 +31,8 @@ WantedBy=multi-user.target
 
 // ServiceConfig holds parameters for generating the systemd service file.
 type ServiceConfig struct {
-	Binary    string
-	ConfigDir string
+	Binary      string
+	ConfigDir   string
 	ServiceName string
 }
 
@@ -61,6 +65,12 @@ func ReloadSystemd() error {
 // EnableService enables a systemd service.
 func EnableService(serviceName string) error {
 	_, err := system.RunCommand("systemctl", "enable", serviceName)
+	return err
+}
+
+// DisableService disables a systemd service.
+func DisableService(serviceName string) error {
+	_, err := system.RunCommand("systemctl", "disable", serviceName)
 	return err
 }
 
@@ -101,8 +111,8 @@ func ServiceStatus(serviceName string) (bool, error) {
 	return output == "active", nil
 }
 
-// SetupSystemd performs the full systemd setup: generate, reload, enable, (optionally) start.
-func SetupSystemd(cfg ServiceConfig, autoStart bool) error {
+// SetupSystemd performs the full systemd setup: generate, reload, sync boot policy, and optionally start.
+func SetupSystemd(cfg ServiceConfig, enableOnBoot bool, startNow bool) error {
 	// Generate service file
 	if err := GenerateServiceFile(cfg); err != nil {
 		return err
@@ -113,13 +123,18 @@ func SetupSystemd(cfg ServiceConfig, autoStart bool) error {
 		return fmt.Errorf("systemctl daemon-reload 失败: %w", err)
 	}
 
-	// Enable service
-	if err := EnableService(cfg.ServiceName); err != nil {
-		return fmt.Errorf("systemctl enable 失败: %w", err)
+	if enableOnBoot {
+		if err := EnableService(cfg.ServiceName); err != nil {
+			return fmt.Errorf("systemctl enable 失败: %w", err)
+		}
+	} else {
+		if err := DisableService(cfg.ServiceName); err != nil {
+			return fmt.Errorf("systemctl disable 失败: %w", err)
+		}
 	}
 
 	// Start if requested
-	if autoStart {
+	if startNow {
 		if err := StartService(cfg.ServiceName); err != nil {
 			return fmt.Errorf("systemctl start 失败: %w", err)
 		}

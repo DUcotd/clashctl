@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"clashctl/internal/app"
 	"clashctl/internal/config"
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
@@ -31,14 +32,14 @@ func (m WizardModel) executeFull() []ExecStep {
 	}
 
 	// Step 4: Render YAML
-	yamlData, ok := m.stepRenderYAML(mihomoCfg, &steps)
+	_, ok = m.stepRenderYAML(mihomoCfg, &steps)
 	if !ok {
 		return steps
 	}
 
 	// Step 5: Write config file
 	configPath := m.appCfg.ConfigDir + "/config.yaml"
-	if !m.stepWriteConfig(mihomoCfg, configPath, yamlData, &steps) {
+	if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
 		return steps
 	}
 
@@ -48,14 +49,28 @@ func (m WizardModel) executeFull() []ExecStep {
 			// TUN not available, re-generate config in mixed-port mode
 			m.appCfg.Mode = "mixed"
 			mihomoCfg = core.BuildMihomoConfig(m.appCfg)
-			yamlData, ok = m.stepRenderYAML(mihomoCfg, &steps)
+			_, ok = m.stepRenderYAML(mihomoCfg, &steps)
 			if !ok {
 				return steps
 			}
-			if !m.stepWriteConfig(mihomoCfg, configPath, yamlData, &steps) {
+			if !m.stepWriteConfig(mihomoCfg, configPath, &steps) {
 				return steps
 			}
 		}
+	}
+
+	if err := app.SaveAppConfig(m.appCfg); err != nil {
+		steps = append(steps, ExecStep{
+			Label:   "保存 clashctl 配置",
+			Success: false,
+			Detail:  err.Error(),
+		})
+	} else {
+		steps = append(steps, ExecStep{
+			Label:   "保存 clashctl 配置",
+			Success: true,
+			Detail:  "已写入 ~/.config/clashctl/config.yaml",
+		})
 	}
 
 	// Step 6.5: Pre-download geodata to avoid blocking mihomo startup
@@ -165,7 +180,7 @@ func (m WizardModel) stepRenderYAML(cfg *core.MihomoConfig, steps *[]ExecStep) (
 	return data, true
 }
 
-func (m WizardModel) stepWriteConfig(cfg *core.MihomoConfig, path string, data []byte, steps *[]ExecStep) bool {
+func (m WizardModel) stepWriteConfig(cfg *core.MihomoConfig, path string, steps *[]ExecStep) bool {
 	if err := system.EnsureDir(m.appCfg.ConfigDir); err != nil {
 		*steps = append(*steps, ExecStep{
 			Label:   "创建配置目录",
@@ -266,7 +281,7 @@ func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 		ServiceName: core.DefaultServiceName,
 	}
 
-	if err := mihomo.SetupSystemd(svcCfg, m.appCfg.AutoStart); err != nil {
+	if err := mihomo.SetupSystemd(svcCfg, m.appCfg.AutoStart, m.appCfg.AutoStart); err != nil {
 		*steps = append(*steps, ExecStep{
 			Label:   "配置 systemd 服务",
 			Success: false,
@@ -277,7 +292,12 @@ func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 		return
 	}
 
-	detail := "服务已创建并启用"
+	detail := "服务文件已写入"
+	if m.appCfg.AutoStart {
+		detail += "，已启用开机自启"
+	} else {
+		detail += "，未启用开机自启"
+	}
 	if m.appCfg.AutoStart {
 		detail += "，已启动"
 	}
@@ -289,12 +309,37 @@ func (m WizardModel) stepSystemd(binary string, steps *[]ExecStep) {
 }
 
 func (m WizardModel) stepStartProcess(steps *[]ExecStep) {
-	// Kill any existing mihomo processes to avoid port conflicts
-	if killed := mihomo.KillExistingMihomo(); killed {
+	if mihomo.HasSystemd() {
+		if active, _ := mihomo.ServiceStatus(mihomo.DefaultServiceName); active {
+			if err := mihomo.StopService(mihomo.DefaultServiceName); err != nil {
+				*steps = append(*steps, ExecStep{
+					Label:   "停止 systemd 服务",
+					Success: false,
+					Detail:  err.Error(),
+				})
+			} else {
+				*steps = append(*steps, ExecStep{
+					Label:   "停止 systemd 服务",
+					Success: true,
+					Detail:  "已停止已有的 clashctl-mihomo 服务",
+				})
+			}
+		}
+	}
+
+	// Stop any managed Mihomo processes using the same config directory.
+	stopped, err := mihomo.StopManagedProcess(m.appCfg.ConfigDir)
+	if err != nil {
+		*steps = append(*steps, ExecStep{
+			Label:   "清理旧进程",
+			Success: false,
+			Detail:  err.Error(),
+		})
+	} else if stopped {
 		*steps = append(*steps, ExecStep{
 			Label:   "清理旧进程",
 			Success: true,
-			Detail:  "已停止旧的 Mihomo 进程",
+			Detail:  "已停止当前配置目录对应的 Mihomo 进程",
 		})
 	}
 

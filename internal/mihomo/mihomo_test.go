@@ -1,6 +1,10 @@
 package mihomo
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -85,6 +89,77 @@ func TestNewProcess(t *testing.T) {
 	}
 	if proc.IsRunning() {
 		t.Error("new process should not be running")
+	}
+}
+
+func TestGetProxyGroupEscapesPath(t *testing.T) {
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.EscapedPath()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"name":"测试 组/一","type":"select","now":"节点 A","all":["节点 A"]}`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	if _, err := client.GetProxyGroup("测试 组/一"); err != nil {
+		t.Fatalf("GetProxyGroup() error: %v", err)
+	}
+
+	if requestedPath != "/proxies/%E6%B5%8B%E8%AF%95%20%E7%BB%84%2F%E4%B8%80" {
+		t.Errorf("escaped path = %q", requestedPath)
+	}
+}
+
+func TestSwitchProxyEscapesPath(t *testing.T) {
+	var requestedPath string
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.EscapedPath()
+		payload, _ := io.ReadAll(r.Body)
+		body = string(payload)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	if err := client.SwitchProxy("测试/组", "节点 A"); err != nil {
+		t.Fatalf("SwitchProxy() error: %v", err)
+	}
+
+	if requestedPath != "/proxies/%E6%B5%8B%E8%AF%95%2F%E7%BB%84" {
+		t.Errorf("escaped path = %q", requestedPath)
+	}
+	if !strings.Contains(body, `"name":"节点 A"`) {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestTestNodeEscapesPath(t *testing.T) {
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.EscapedPath()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"history":[{"time":"2026-03-19T00:00:00Z","delay":123}]}`)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	if got := client.TestNode("组 /A", "节点/%25"); got != 123 {
+		t.Fatalf("TestNode() = %d, want 123", got)
+	}
+
+	if requestedPath != "/proxies/%E7%BB%84%20%2FA/%E8%8A%82%E7%82%B9%2F%2525" {
+		t.Errorf("escaped path = %q", requestedPath)
+	}
+}
+
+func TestProcessUsesConfigDir(t *testing.T) {
+	if !processUsesConfigDir([]string{"/usr/local/bin/mihomo", "-d", "/etc/mihomo"}, "/etc/mihomo") {
+		t.Fatal("expected processUsesConfigDir to match managed process")
+	}
+	if processUsesConfigDir([]string{"/usr/bin/bash", "-d", "/etc/mihomo"}, "/etc/mihomo") {
+		t.Fatal("unexpected match for unrelated process")
 	}
 }
 

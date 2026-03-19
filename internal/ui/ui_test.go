@@ -3,6 +3,7 @@ package ui
 import (
 	"testing"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -86,7 +87,7 @@ func TestFormatNodeDelay(t *testing.T) {
 }
 
 func TestNewWizardDefaults(t *testing.T) {
-	wizard := NewWizard()
+	wizard := NewWizard(core.DefaultAppConfig())
 
 	if wizard.screen != ScreenWelcome {
 		t.Errorf("initial screen = %d, want %d", wizard.screen, ScreenWelcome)
@@ -103,7 +104,7 @@ func TestNewWizardDefaults(t *testing.T) {
 }
 
 func TestWizardCompleted(t *testing.T) {
-	wizard := NewWizard()
+	wizard := NewWizard(core.DefaultAppConfig())
 	if wizard.Completed() {
 		t.Error("new wizard should not be completed")
 	}
@@ -114,4 +115,30 @@ func TestWizardCompleted(t *testing.T) {
 	}
 }
 
+func TestNewWizardUsesPersistedValues(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	cfg.SubscriptionURL = "https://example.com/sub"
+	cfg.Mode = "tun"
+	cfg.ConfigDir = "/tmp/mihomo-test"
+	cfg.ControllerAddr = "127.0.0.1:9191"
+	cfg.MixedPort = 9090
+	cfg.ProviderPath = "./providers/custom.yaml"
+	cfg.EnableHealthCheck = false
+	cfg.EnableSystemd = false
+	cfg.AutoStart = false
 
+	wizard := NewWizard(cfg)
+
+	if wizard.urlInput.Value() != cfg.SubscriptionURL {
+		t.Errorf("urlInput = %q, want %q", wizard.urlInput.Value(), cfg.SubscriptionURL)
+	}
+	if wizard.modeIndex != 0 {
+		t.Errorf("modeIndex = %d, want 0 for tun", wizard.modeIndex)
+	}
+	if wizard.advancedInputs[0].Value() != cfg.ConfigDir {
+		t.Errorf("config dir input = %q, want %q", wizard.advancedInputs[0].Value(), cfg.ConfigDir)
+	}
+	if wizard.advancedInputs[1].Value() != cfg.ControllerAddr {
+		t.Errorf("controller input = %q, want %q", wizard.advancedInputs[1].Value(), cfg.ControllerAddr)
+	}
+}

@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -21,10 +20,14 @@ func init() {
 
 func runRestart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔄 正在重启 Mihomo...")
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
 
 	// Try systemd first
 	if mihomo.HasSystemd() {
-		if err := mihomo.RestartService(core.DefaultServiceName); err == nil {
+		if err := mihomo.RestartService(mihomo.DefaultServiceName); err == nil {
 			fmt.Println("✅ Mihomo 已重启")
 			return nil
 		} else {
@@ -32,10 +35,12 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Fallback: kill existing processes and start new one
-	mihomo.KillExistingMihomo()
+	// Fallback: stop existing managed process and start a new one.
+	if _, err := mihomo.StopManagedProcess(cfg.ConfigDir); err != nil {
+		return fmt.Errorf("重启失败: %w", err)
+	}
 
-	proc := mihomo.NewProcess(core.DefaultConfigDir)
+	proc := mihomo.NewProcess(cfg.ConfigDir)
 	if err := proc.Start(); err != nil {
 		return fmt.Errorf("重启失败: %w", err)
 	}

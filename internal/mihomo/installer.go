@@ -3,7 +3,6 @@ package mihomo
 
 import (
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"clashctl/internal/system"
 )
 
 const (
@@ -94,20 +95,9 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
 		MihomoGitHubOwner, MihomoGitHubRepo)
 
-	client := &http.Client{Timeout: GitHubAPITimeout}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
-	}
-
 	var release MihomoRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := system.FetchJSON(url, GitHubAPITimeout, &release); err != nil {
+		return nil, fmt.Errorf("获取 GitHub Release 失败: %w", err)
 	}
 
 	return &release, nil
@@ -175,24 +165,7 @@ func isPlatformMatch(name, goos, goarch string) bool {
 
 // downloadBinary downloads a file from url to destPath.
 func downloadBinary(url, destPath string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
+	return system.DownloadFile(url, destPath)
 }
 
 // downloadAndDecompressGz downloads a gzip-compressed file and decompresses it to destPath.

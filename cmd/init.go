@@ -6,7 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/app"
 	"clashctl/internal/ui"
 )
 
@@ -22,13 +21,13 @@ func init() {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	// Ensure clashctl app directory exists
-	if err := app.Bootstrap(); err != nil {
+	appCfg, err := loadAppConfig()
+	if err != nil {
 		return err
 	}
 
 	// Create and run the Bubble Tea wizard
-	wizard := ui.NewWizard()
+	wizard := ui.NewWizard(appCfg)
 	p := tea.NewProgram(wizard, tea.WithAltScreen())
 
 	finalModel, err := p.Run()

@@ -8,7 +8,7 @@ Mihomo 交互式 CLI 配置工具 — 输入订阅 URL，一键配置代理。
 - 📡 **自动下载 Mihomo** — 内核自动安装，无需手动下载
 - 🔀 TUN 模式 / mixed-port 模式
 - ⚡ 一键启动 / 停止 / 重启 Mihomo
-- 🔍 环境自检（11项检查）
+- 🔍 环境自检（默认 8 项，`--tun` 时 11 项）
 - 📡 **节点管理**（延迟测试 / 切换 / 刷新）
 - 🔧 systemd 服务集成
 - 🔄 自动更新
@@ -29,8 +29,8 @@ sudo clashctl init
 
 ```bash
 # 只安装 clashctl
-curl -sL https://github.com/DUcotd/clashctl/releases/latest/download/clashctl-linux-amd64 -o /usr/local/bin/clashctl
-chmod +x /usr/local/bin/clashctl
+sudo curl -sL https://github.com/DUcotd/clashctl/releases/latest/download/clashctl-linux-amd64 -o /usr/local/bin/clashctl
+sudo chmod +x /usr/local/bin/clashctl
 
 # 安装 Mihomo 内核（自动下载最新版）
 sudo clashctl install
@@ -60,7 +60,7 @@ sudo clashctl install
 sudo clashctl doctor
 
 # 命令式操作
-clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
+sudo clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
 sudo clashctl start
 clashctl status
 clashctl nodes list
@@ -69,7 +69,7 @@ clashctl nodes use "节点名称"
 
 ## TUI 节点管理
 
-在 `clashctl init` 向导完成后，如果 Mihomo 已运行，会自动进入节点管理界面：
+在 `clashctl init` 向导完成后，如果 Mihomo 已运行且 Controller API 可达，结果页会提示你按 `Enter` 或 `n` 进入节点管理界面：
 
 | 按键 | 功能 |
 |------|------|
@@ -92,7 +92,7 @@ clashctl nodes use "节点名称"
 | `clashctl stop` | 停止 Mihomo |
 | `clashctl restart` | 重启 Mihomo |
 | `clashctl status` | 查看运行状态 |
-| `clashctl doctor` | 环境自检（11项） |
+| `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
 | `clashctl nodes list` | 列出代理节点 |
 | `clashctl nodes use` | 切换代理节点 |
 | `clashctl nodes groups` | 列出代理组 |

@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 只需输入订阅链接，clashctl 会自动：
   - 生成 Mihomo 配置文件
   - 启动服务
-  - 进行自检
+	  - 检查 Controller API
 
 使用 clashctl init 开始交互式配置向导。`,
 }

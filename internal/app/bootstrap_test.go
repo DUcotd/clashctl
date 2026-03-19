@@ -2,12 +2,22 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"clashctl/internal/core"
 )
 
+func withTempHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	return home
+}
+
 func TestMyAppDir(t *testing.T) {
+	home := withTempHome(t)
+
 	dir, err := MyAppDir()
 	if err != nil {
 		t.Fatalf("MyAppDir() error: %v", err)
@@ -19,9 +29,14 @@ func TestMyAppDir(t *testing.T) {
 	if len(dir) < len(".config/clashctl") {
 		t.Errorf("MyAppDir() = %q, too short", dir)
 	}
+	if dir != filepath.Join(home, ".config", "clashctl") {
+		t.Errorf("MyAppDir() = %q", dir)
+	}
 }
 
 func TestConfigPath(t *testing.T) {
+	withTempHome(t)
+
 	path, err := ConfigPath()
 	if err != nil {
 		t.Fatalf("ConfigPath() error: %v", err)
@@ -32,6 +47,8 @@ func TestConfigPath(t *testing.T) {
 }
 
 func TestBootstrap(t *testing.T) {
+	withTempHome(t)
+
 	if err := Bootstrap(); err != nil {
 		t.Fatalf("Bootstrap() error: %v", err)
 	}
@@ -43,6 +60,8 @@ func TestBootstrap(t *testing.T) {
 }
 
 func TestLoadOrCreateAppConfig(t *testing.T) {
+	withTempHome(t)
+
 	cfg, err := LoadOrCreateAppConfig()
 	if err != nil {
 		t.Fatalf("LoadOrCreateAppConfig() error: %v", err)
@@ -56,9 +75,13 @@ func TestLoadOrCreateAppConfig(t *testing.T) {
 }
 
 func TestSaveAndLoadAppConfig(t *testing.T) {
+	withTempHome(t)
+
 	cfg := core.DefaultAppConfig()
 	cfg.SubscriptionURL = "https://test.example.com/sub"
 	cfg.Mode = "mixed"
+	cfg.ConfigDir = "/tmp/test-mihomo"
+	cfg.ControllerAddr = "127.0.0.1:9091"
 
 	if err := SaveAppConfig(cfg); err != nil {
 		t.Fatalf("SaveAppConfig() error: %v", err)
@@ -73,5 +96,11 @@ func TestSaveAndLoadAppConfig(t *testing.T) {
 	}
 	if loaded.Mode != cfg.Mode {
 		t.Errorf("loaded Mode = %q, want %q", loaded.Mode, cfg.Mode)
+	}
+	if loaded.ConfigDir != cfg.ConfigDir {
+		t.Errorf("loaded ConfigDir = %q, want %q", loaded.ConfigDir, cfg.ConfigDir)
+	}
+	if loaded.ControllerAddr != cfg.ControllerAddr {
+		t.Errorf("loaded ControllerAddr = %q, want %q", loaded.ControllerAddr, cfg.ControllerAddr)
 	}
 }

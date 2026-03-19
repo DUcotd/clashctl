@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -23,12 +22,18 @@ func init() {
 func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🚀 正在启动 Mihomo...")
 
-	// Kill any existing mihomo processes first to avoid port conflicts
-	if killed := mihomo.KillExistingMihomo(); killed {
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	if stopped, err := mihomo.StopManagedProcess(cfg.ConfigDir); err != nil {
+		fmt.Printf("⚠️  清理旧进程失败: %v\n", err)
+	} else if stopped {
 		fmt.Println("🧹 已清理旧进程")
 	}
 
-	configDir := core.DefaultConfigDir
+	configDir := cfg.ConfigDir
 
 	// Pre-download geodata if missing (avoids mihomo blocking on first startup)
 	if mihomo.NeedGeoData(configDir) {
@@ -38,20 +43,28 @@ func runStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Try systemd first
-	if mihomo.HasSystemd() {
+	// Try systemd first when enabled in app config.
+	if cfg.EnableSystemd && mihomo.HasSystemd() {
 		binary, err := mihomo.FindBinary()
 		if err == nil {
 			svcCfg := mihomo.ServiceConfig{
 				Binary:      binary,
 				ConfigDir:   configDir,
-				ServiceName: core.DefaultServiceName,
+				ServiceName: mihomo.DefaultServiceName,
 			}
-			if err := mihomo.SetupSystemd(svcCfg, true); err == nil {
+			if err := mihomo.SetupSystemd(svcCfg, cfg.AutoStart, true); err == nil {
 				fmt.Println("✅ 通过 systemd 启动成功")
 				return nil
 			}
 			fmt.Printf("⚠️  systemd 启动失败: %v\n正在回退到子进程模式...\n", err)
+		}
+	}
+
+	if mihomo.HasSystemd() {
+		if active, _ := mihomo.ServiceStatus(mihomo.DefaultServiceName); active {
+			if err := mihomo.StopService(mihomo.DefaultServiceName); err != nil {
+				fmt.Printf("⚠️  停止已有 systemd 服务失败: %v\n", err)
+			}
 		}
 	}
 

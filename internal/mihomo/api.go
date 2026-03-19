@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -42,8 +43,8 @@ type ProxyGroup struct {
 
 // GetProxyGroup fetches details of a specific proxy group.
 func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
-	url := fmt.Sprintf("%s/proxies/%s", c.BaseURL, name)
-	resp, err := c.HTTP.Get(url)
+	apiURL := fmt.Sprintf("%s/proxies/%s", c.BaseURL, url.PathEscape(name))
+	resp, err := c.HTTP.Get(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接 controller API (%s): %w", c.BaseURL, err)
 	}
@@ -63,14 +64,14 @@ func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
 
 // SwitchProxy switches the selected node in a proxy group.
 func (c *Client) SwitchProxy(groupName, nodeName string) error {
-	url := fmt.Sprintf("%s/proxies/%s", c.BaseURL, groupName)
+	apiURL := fmt.Sprintf("%s/proxies/%s", c.BaseURL, url.PathEscape(groupName))
 	body := map[string]string{"name": nodeName}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(jsonBody))
+	req, err := http.NewRequest(http.MethodPut, apiURL, bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("构建请求失败: %w", err)
 	}
@@ -120,8 +121,8 @@ func (c *Client) TestNode(groupName, nodeName string) int {
 		History []History `json:"history"`
 	}
 
-	url := fmt.Sprintf("%s/proxies/%s/%s", c.BaseURL, groupName, nodeName)
-	resp, err := c.HTTP.Get(url)
+	apiURL := fmt.Sprintf("%s/proxies/%s/%s", c.BaseURL, url.PathEscape(groupName), url.PathEscape(nodeName))
+	resp, err := c.HTTP.Get(apiURL)
 	if err != nil {
 		return -1
 	}

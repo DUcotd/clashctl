@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +21,8 @@ const (
 	ShutdownTimeout = 5 * time.Second
 	// KillWait is the time to wait after killing processes.
 	KillWait = 1 * time.Second
+	// PIDFileName is the pid file used for managed subprocess mode.
+	PIDFileName = "clashctl.pid"
 )
 
 // Process manages a Mihomo child process.
@@ -89,6 +94,10 @@ func (p *Process) Start() error {
 		return fmt.Errorf("Mihomo 进程启动后立即退出: %w", err)
 	}
 
+	if err := writePIDFile(p.ConfigDir, p.cmd.Process.Pid); err != nil {
+		return fmt.Errorf("记录 Mihomo 进程 PID 失败: %w", err)
+	}
+
 	return nil
 }
 
@@ -111,6 +120,7 @@ func (p *Process) Stop() error {
 
 	select {
 	case err := <-done:
+		_ = removePIDFile(p.ConfigDir)
 		return err
 	case <-time.After(ShutdownTimeout):
 		// Force kill if graceful shutdown timed out
@@ -119,6 +129,7 @@ func (p *Process) Stop() error {
 		}
 		// Wait for Wait goroutine to complete after kill
 		<-done
+		_ = removePIDFile(p.ConfigDir)
 		return nil
 	}
 }
@@ -146,19 +157,173 @@ func IsMihomoRunningAt(controllerAddr string) bool {
 	return client.CheckConnection() == nil
 }
 
-// KillExistingMihomo kills any running mihomo processes to free the port.
-// Returns true if processes were killed, false if none were found.
-func KillExistingMihomo() bool {
-	// Use pkill to find and kill mihomo processes
-	cmd := exec.Command("pkill", "-9", "mihomo")
-	err := cmd.Run()
+// StopManagedProcess gracefully stops Mihomo subprocesses using the given config dir.
+// It only targets processes that clashctl previously started or that are using the same config dir.
+func StopManagedProcess(configDir string) (bool, error) {
+	matched := false
+
+	pid, err := readPIDFile(configDir)
+	if err == nil {
+		if isManagedPID(pid, configDir) {
+			matched = true
+			stopped, stopErr := stopPID(pid)
+			if stopErr != nil {
+				return true, stopErr
+			}
+			if stopped {
+				time.Sleep(KillWait)
+			}
+			_ = removePIDFile(configDir)
+			return stopped, nil
+		}
+		_ = removePIDFile(configDir)
+	}
+
+	pids, err := findManagedProcessPIDs(configDir)
 	if err != nil {
-		// pkill returns non-zero if no processes matched - that's fine
+		return false, err
+	}
+	if len(pids) == 0 {
+		_ = removePIDFile(configDir)
+		return matched, nil
+	}
+
+	matched = true
+	for _, pid := range pids {
+		if _, err := stopPID(pid); err != nil {
+			return true, err
+		}
+	}
+	_ = removePIDFile(configDir)
+	time.Sleep(KillWait)
+	return true, nil
+}
+
+func pidFilePath(configDir string) string {
+	return filepath.Join(configDir, PIDFileName)
+}
+
+func writePIDFile(configDir string, pid int) error {
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(pidFilePath(configDir), []byte(strconv.Itoa(pid)), 0600)
+}
+
+func readPIDFile(configDir string) (int, error) {
+	data, err := os.ReadFile(pidFilePath(configDir))
+	if err != nil {
+		return 0, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, fmt.Errorf("解析 PID 文件失败: %w", err)
+	}
+	return pid, nil
+}
+
+func removePIDFile(configDir string) error {
+	err := os.Remove(pidFilePath(configDir))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func stopPID(pid int) (bool, error) {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false, err
+	}
+
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false, nil
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		return false, fmt.Errorf("发送 SIGTERM 到进程 %d 失败: %w", pid, err)
+	}
+
+	deadline := time.Now().Add(ShutdownTimeout)
+	for time.Now().Before(deadline) {
+		if err := proc.Signal(syscall.Signal(0)); err != nil {
+			return true, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		return false, fmt.Errorf("强制停止进程 %d 失败: %w", pid, err)
+	}
+	return true, nil
+}
+
+func findManagedProcessPIDs(configDir string) ([]int, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("读取 /proc 失败: %w", err)
+	}
+
+	var pids []int
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+
+		cmdline, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
+		if err != nil || len(cmdline) == 0 {
+			continue
+		}
+
+		args := splitCmdline(cmdline)
+		if processUsesConfigDir(args, configDir) {
+			pids = append(pids, pid)
+		}
+	}
+
+	return pids, nil
+}
+
+func isManagedPID(pid int, configDir string) bool {
+	cmdline, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil || len(cmdline) == 0 {
 		return false
 	}
-	// Give processes time to die and release ports
-	time.Sleep(KillWait)
-	return true
+	return processUsesConfigDir(splitCmdline(cmdline), configDir)
+}
+
+func splitCmdline(cmdline []byte) []string {
+	parts := strings.Split(string(cmdline), "\x00")
+	args := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			args = append(args, part)
+		}
+	}
+	return args
+}
+
+func processUsesConfigDir(args []string, configDir string) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	base := filepath.Base(args[0])
+	if base != "mihomo" && base != "clash-meta" && base != "clash" {
+		return false
+	}
+
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-d" && args[i+1] == configDir {
+			return true
+		}
+	}
+
+	return false
 }
 
 // FindBinary locates the mihomo binary in PATH or at the default install location.

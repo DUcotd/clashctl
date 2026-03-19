@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -23,11 +22,24 @@ func init() {
 func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println("📊 Mihomo 状态")
 	fmt.Println()
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
 
 	// Check systemd service
-	active, _ := mihomo.ServiceStatus("clashctl-mihomo")
-	if active {
+	serviceActive := false
+	if mihomo.HasSystemd() {
+		serviceActive, _ = mihomo.ServiceStatus(mihomo.DefaultServiceName)
+	}
+
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
+	controllerOK := client.CheckConnection() == nil
+
+	if serviceActive {
 		fmt.Println("  服务状态: ✅ 运行中 (systemd)")
+	} else if controllerOK {
+		fmt.Println("  服务状态: ✅ 运行中 (子进程/API 可达)")
 	} else {
 		fmt.Println("  服务状态: ❌ 未运行")
 	}
@@ -40,15 +52,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		version, _ := mihomo.GetBinaryVersion()
 		fmt.Printf("  可执行文件: ✅ %s\n", binary)
 		if version != "" {
-			fmt.Printf("  版本: %s", version)
+			fmt.Printf("  版本: %s\n", version)
 		}
 	}
 
 	// Check config path
-	fmt.Printf("  配置目录: %s\n", core.DefaultConfigDir)
+	fmt.Printf("  配置目录: %s\n", cfg.ConfigDir)
 
 	// Check controller API
-	client := mihomo.NewClient("http://" + core.DefaultControllerAddr)
 	if err := client.CheckConnection(); err != nil {
 		fmt.Printf("  Controller API: ❌ %s\n", err.Error())
 	} else {
@@ -61,7 +72,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Show all proxy groups if API is reachable
-	if active {
+	if controllerOK {
 		groups, err := client.GetAllProxyGroups()
 		if err == nil && len(groups) > 0 {
 			fmt.Println("\n  ── 代理组 ──")

@@ -45,7 +45,7 @@ clashctl/
 │       ├── styles.go       # lipgloss 样式
 │       └── state.go        # 状态定义
 ├── assets/
-│   └── clashctl.service.tpl # systemd 服务模板
+│   └── clashctl.service.tpl # 文档参考模板
 └── docs/
     ├── USER_GUIDE.md
     └── DEVELOPMENT.md

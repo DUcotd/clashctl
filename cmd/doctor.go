@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -14,7 +13,7 @@ var doctorTunMode bool
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "环境自检",
-	Long:  `检查当前环境是否满足 Mihomo TUN 模式的运行条件。`,
+	Long:  `检查当前环境是否满足 Mihomo 的运行条件；传入 --tun 时会额外检查 TUN 相关条件。`,
 	RunE:  runDoctor,
 }
 
@@ -27,7 +26,12 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	fmt.Println("🩺 环境自检")
 	fmt.Println()
 
-	results := mihomo.RunDoctor(core.DefaultConfigDir, core.DefaultControllerAddr, doctorTunMode)
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, doctorTunMode)
 
 	passed := 0
 	failed := 0

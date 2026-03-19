@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -42,12 +41,17 @@ func init() {
 }
 
 func runNodesList(cmd *cobra.Command, args []string) error {
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
 	groupName := "PROXY"
 	if len(args) > 0 {
 		groupName = args[0]
 	}
 
-	client := mihomo.NewClient("http://" + core.DefaultControllerAddr)
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
 
 	detail, err := client.GetProxyGroupDetail(groupName)
 	if err != nil {
@@ -74,13 +78,18 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 }
 
 func runNodesUse(cmd *cobra.Command, args []string) error {
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
 	nodeName := args[0]
 	groupName := "PROXY"
 	if len(args) > 1 {
 		groupName = args[1]
 	}
 
-	client := mihomo.NewClient("http://" + core.DefaultControllerAddr)
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
 
 	if err := client.SwitchProxy(groupName, nodeName); err != nil {
 		return fmt.Errorf("切换节点失败: %w", err)
@@ -91,7 +100,12 @@ func runNodesUse(cmd *cobra.Command, args []string) error {
 }
 
 func runNodesGroups(cmd *cobra.Command, args []string) error {
-	client := mihomo.NewClient("http://" + core.DefaultControllerAddr)
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
 
 	groups, err := client.GetAllProxyGroups()
 	if err != nil {

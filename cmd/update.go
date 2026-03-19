@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"runtime"
 	"time"
@@ -98,7 +95,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Download new binary to temp file
 	tmpPath := selfPath + ".tmp"
-	if err := downloadFile(downloadURL, tmpPath); err != nil {
+	if err := system.DownloadFile(downloadURL, tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("下载失败: %w", err)
 	}
@@ -136,42 +133,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 func fetchLatestRelease() (*GitHubRelease, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", githubOwner, githubRepo)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API 返回 %d", resp.StatusCode)
-	}
-
 	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	if err := system.FetchJSON(url, 10*time.Second, &release); err != nil {
+		return nil, fmt.Errorf("获取 GitHub Release 失败: %w", err)
 	}
 
 	return &release, nil
-}
-
-func downloadFile(url, destPath string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
 }

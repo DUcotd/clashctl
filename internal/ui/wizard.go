@@ -86,11 +86,21 @@ type nodeSwitchedMsg struct {
 	err     string
 }
 
-// NewWizard creates a new WizardModel with defaults.
-func NewWizard() WizardModel {
+// NewWizard creates a new WizardModel with defaults or persisted values.
+func NewWizard(appCfg *core.AppConfig) WizardModel {
+	if appCfg == nil {
+		appCfg = core.DefaultAppConfig()
+	}
+
+	modeIndex := 1
+	if appCfg.Mode == "tun" {
+		modeIndex = 0
+	}
+
 	// URL input
 	urlInput := textinput.New()
 	urlInput.Placeholder = "https://example.com/subscription"
+	urlInput.SetValue(appCfg.SubscriptionURL)
 	urlInput.Focus()
 	urlInput.Width = 60
 	urlInput.Prompt = "› "
@@ -116,19 +126,19 @@ func NewWizard() WizardModel {
 		ti.TextStyle = InputStyle
 		switch label {
 		case "配置目录":
-			ti.SetValue(core.DefaultConfigDir)
+			ti.SetValue(appCfg.ConfigDir)
 		case "控制器地址":
-			ti.SetValue(core.DefaultControllerAddr)
+			ti.SetValue(appCfg.ControllerAddr)
 		case "mixed-port":
-			ti.SetValue(fmt.Sprintf("%d", core.DefaultMixedPort))
+			ti.SetValue(fmt.Sprintf("%d", appCfg.MixedPort))
 		case "Provider 路径":
-			ti.SetValue("./providers/airport.yaml")
+			ti.SetValue(appCfg.ProviderPath)
 		case "健康检查":
-			ti.SetValue("是")
+			ti.SetValue(boolToYesNo(appCfg.EnableHealthCheck))
 		case "systemd 服务":
-			ti.SetValue("是")
+			ti.SetValue(boolToYesNo(appCfg.EnableSystemd))
 		case "自动启动":
-			ti.SetValue("是")
+			ti.SetValue(boolToYesNo(appCfg.AutoStart))
 		}
 		advInputs[i] = ti
 	}
@@ -138,15 +148,10 @@ func NewWizard() WizardModel {
 	s.Spinner = spinner.Dot
 	s.Style = SpinnerStyle
 
-	// Auto-detect TUN capability — default to mixed-port for reliability
-	appCfg := core.DefaultAppConfig()
-	// Default to mixed-port (modeIndex=1) unless user explicitly wants TUN
-	appCfg.Mode = "mixed"
-
 	return WizardModel{
 		screen:         ScreenWelcome,
 		appCfg:         appCfg,
-		modeIndex:      1, // default to mixed-port for reliability
+		modeIndex:      modeIndex,
 		urlInput:       urlInput,
 		advancedFields: fields,
 		advancedInputs: advInputs,

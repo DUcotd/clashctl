@@ -5,8 +5,6 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-
-	"clashctl/internal/core"
 )
 
 var configCmd = &cobra.Command{
@@ -33,7 +31,12 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
-	configPath := core.DefaultConfigDir + "/config.yaml"
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	configPath := mihomoConfigPath(cfg)
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("无法读取配置文件 %s: %w", configPath, err)
@@ -43,8 +46,13 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigPath(cmd *cobra.Command, args []string) error {
-	fmt.Printf("配置目录: %s\n", core.DefaultConfigDir)
-	fmt.Printf("配置文件: %s/config.yaml\n", core.DefaultConfigDir)
-	fmt.Printf("Provider: %s/%s\n", core.DefaultConfigDir, core.DefaultProviderPath)
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("配置目录: %s\n", cfg.ConfigDir)
+	fmt.Printf("配置文件: %s\n", mihomoConfigPath(cfg))
+	fmt.Printf("Provider: %s\n", mihomoProviderPath(cfg))
 	return nil
 }
