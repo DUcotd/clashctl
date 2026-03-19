@@ -61,6 +61,9 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 	// 11. Check geodata files (needed for GEOIP/GEOSITE rules)
 	results = append(results, checkGeoData(configDir))
 
+	// 12. Check whether subscription/provider nodes are actually loaded
+	results = append(results, checkProxyInventory(controllerAddr))
+
 	return results
 }
 
@@ -265,6 +268,35 @@ func checkMihomoRunning(controllerAddr string) CheckResult {
 	}
 	return CheckResult{
 		Name:    "Mihomo 运行状态",
+		Passed:  true,
+		Problem: detail,
+	}
+}
+
+func checkProxyInventory(controllerAddr string) CheckResult {
+	client := NewClient("http://" + controllerAddr)
+	inv, err := client.InspectProxyInventory("PROXY")
+	if err != nil {
+		return CheckResult{
+			Name:    "代理节点加载",
+			Passed:  true,
+			Problem: "Controller API 不可达，跳过节点加载检查",
+		}
+	}
+	if inv.Loaded == 0 || inv.OnlyCompatible {
+		return CheckResult{
+			Name:    "代理节点加载",
+			Passed:  false,
+			Problem: fmt.Sprintf("PROXY 组未加载真实节点，当前候选: %v", inv.Candidates),
+			Suggest: "服务器可能无法直连订阅 URL；可先在本地下载订阅，再执行 'clashctl import --file sub.txt --apply --start'",
+		}
+	}
+	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", inv.Loaded)
+	if inv.Current != "" {
+		detail += "，当前: " + inv.Current
+	}
+	return CheckResult{
+		Name:    "代理节点加载",
 		Passed:  true,
 		Problem: detail,
 	}

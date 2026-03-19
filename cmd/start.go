@@ -75,5 +75,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("✅ Mihomo 已以子进程方式启动")
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
+	if err := client.CheckConnection(); err == nil {
+		if inv, err := client.InspectProxyInventory("PROXY"); err == nil && inv.OnlyCompatible {
+			fmt.Println("⚠️  Controller API 已启动，但订阅节点未成功加载；当前仅剩 COMPATIBLE")
+			fmt.Println("   建议: 在本地下载订阅后执行 'clashctl import --file sub.txt --apply --start'")
+		}
+	}
 	return nil
 }

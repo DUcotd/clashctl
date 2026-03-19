@@ -62,6 +62,7 @@ sudo clashctl doctor
 # 命令式操作
 sudo clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
 clashctl import -f sub.txt -o config.yaml
+clashctl import -f sub.txt --apply --start
 sudo clashctl start
 clashctl status
 clashctl nodes list
@@ -89,7 +90,7 @@ clashctl nodes use "节点名称"
 | `clashctl init` | 交互式配置向导（含节点管理） |
 | `clashctl install` | 安装 Mihomo 内核 |
 | `clashctl export` | 导出配置文件 |
-| `clashctl import` | 从本地原始订阅文件生成静态配置 |
+| `clashctl import` | 从本地原始订阅文件生成静态配置，可直接应用并启动 |
 | `clashctl start` | 启动 Mihomo |
 | `clashctl stop` | 停止 Mihomo |
 | `clashctl restart` | 重启 Mihomo |

@@ -89,8 +89,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				fmt.Printf("     节点数: %d\n", len(group.All))
 			}
 
-			if proxy, err := client.GetProxyGroup("PROXY"); err == nil {
-				if len(proxy.All) == 1 && proxy.All[0] == "COMPATIBLE" {
+			if inv, err := client.InspectProxyInventory("PROXY"); err == nil {
+				if inv.OnlyCompatible {
 					fmt.Println("\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
 					fmt.Println("    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
 					fmt.Println("    可改用 'clashctl import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")

@@ -35,6 +35,14 @@ type ProxyNode struct {
 	Selected bool
 }
 
+// ProxyInventory summarizes whether a config has loaded usable proxy entries.
+type ProxyInventory struct {
+	Loaded         int
+	Current        string
+	Candidates     []string
+	OnlyCompatible bool
+}
+
 // GetAllProxyGroups returns all proxy groups from the controller API.
 func (c *Client) GetAllProxyGroups() (map[string]ProxyGroup, error) {
 	url := fmt.Sprintf("%s/proxies", c.BaseURL)
@@ -206,4 +214,19 @@ func FormatDelay(delay int) string {
 	default:
 		return fmt.Sprintf("%.1fs 🔴", float64(delay)/1000)
 	}
+}
+
+// InspectProxyInventory inspects the PROXY group and reports whether real nodes were loaded.
+func (c *Client) InspectProxyInventory(groupName string) (*ProxyInventory, error) {
+	group, err := c.GetProxyGroup(groupName)
+	if err != nil {
+		return nil, err
+	}
+	inv := &ProxyInventory{
+		Loaded:     len(group.All),
+		Current:    group.Now,
+		Candidates: append([]string{}, group.All...),
+	}
+	inv.OnlyCompatible = inv.Loaded == 1 && (group.All[0] == "COMPATIBLE" || group.All[0] == "DIRECT")
+	return inv, nil
 }

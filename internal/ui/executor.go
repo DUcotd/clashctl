@@ -431,7 +431,7 @@ func (m *WizardModel) reportControllerReady(client *mihomo.Client, steps *[]Exec
 
 func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
 	client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-	group, err := client.GetProxyGroup("PROXY")
+	inv, err := client.InspectProxyInventory("PROXY")
 	if err != nil {
 		m.controllerAvailable = false
 		*steps = append(*steps, ExecStep{
@@ -450,16 +450,15 @@ func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
 		}
 	}
 
-	loaded := len(group.All)
-	onlyCompatible := loaded == 1 && (group.All[0] == "COMPATIBLE" || group.All[0] == "DIRECT")
-	if loaded == 0 || onlyCompatible || providerMissing {
+	loaded := inv.Loaded
+	if loaded == 0 || inv.OnlyCompatible || providerMissing {
 		m.controllerAvailable = false
 		detail := "Controller API 已就绪，但订阅节点未成功加载"
 		if providerMissing {
 			detail += fmt.Sprintf("\nprovider 文件不存在或为空: %s", providerPath)
 		}
 		if loaded > 0 {
-			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", group.All)
+			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", inv.Candidates)
 		}
 		detail += "\n常见原因: 服务器无法直连订阅 URL、provider 拉取失败、或订阅返回的是原始节点链接"
 		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl import --file sub.txt -o config.yaml' 生成静态配置"
@@ -472,8 +471,8 @@ func (m *WizardModel) stepVerifyProxyInventory(steps *[]ExecStep) {
 	}
 
 	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", loaded)
-	if group.Now != "" {
-		detail += "\n当前节点: " + group.Now
+	if inv.Current != "" {
+		detail += "\n当前节点: " + inv.Current
 	}
 	*steps = append(*steps, ExecStep{
 		Label:   "验证代理节点加载",

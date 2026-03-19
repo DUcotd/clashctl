@@ -35,6 +35,8 @@ clashctl export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路径]
 
 ```bash
 clashctl import -f sub.txt -o config.yaml
+clashctl import -f sub.txt --apply --start
+cat sub.txt | clashctl import -f - --apply --start
 ```
 
 ### clashctl start / stop / restart
@@ -98,4 +100,5 @@ clashctl config path    # 显示配置路径
 ```bash
 base64 -d sub.txt > links.txt   # 如果文件是 base64
 clashctl import -f links.txt -o config.yaml
+clashctl import -f links.txt --apply --start
 ```
