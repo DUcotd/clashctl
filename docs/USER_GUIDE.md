@@ -55,6 +55,7 @@ cat sub.txt | clashctl import -f - --apply --start
 ```bash
 clashctl doctor         # 默认检查常规环境
 clashctl doctor --tun   # 额外检查 TUN 相关条件
+clashctl doctor openai  # 诊断 OpenAI/Codex 登录链路
 ```
 
 ### clashctl nodes

@@ -17,8 +17,16 @@ var doctorCmd = &cobra.Command{
 	RunE:  runDoctor,
 }
 
+var doctorOpenAICmd = &cobra.Command{
+	Use:   "openai",
+	Short: "诊断 OpenAI/Codex 登录链路",
+	Long:  `检查当前 shell 代理环境、直连/代理出口地区，以及 auth.openai.com / api.openai.com 的可达性。`,
+	RunE:  runDoctorOpenAI,
+}
+
 func init() {
 	doctorCmd.Flags().BoolVar(&doctorTunMode, "tun", false, "是否检查 TUN 模式相关条件")
+	doctorCmd.AddCommand(doctorOpenAICmd)
 	rootCmd.AddCommand(doctorCmd)
 }
 
@@ -32,6 +40,34 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, doctorTunMode)
+
+	return printDoctorResults(results)
+}
+
+func runDoctorOpenAI(cmd *cobra.Command, args []string) error {
+	fmt.Println("🩺 OpenAI / Codex 登录诊断")
+	fmt.Println()
+
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	report := mihomo.RunOpenAIDoctor(cfg.MixedPort)
+	if len(report.Hints) > 0 {
+		defer func() {
+			fmt.Println()
+			fmt.Println("结论:")
+			for _, hint := range report.Hints {
+				fmt.Printf("  - %s\n", hint)
+			}
+		}()
+	}
+
+	return printDoctorResults(report.Results)
+}
+
+func printDoctorResults(results []mihomo.CheckResult) error {
 
 	passed := 0
 	failed := 0

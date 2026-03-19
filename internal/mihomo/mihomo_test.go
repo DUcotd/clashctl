@@ -220,29 +220,38 @@ func TestSwitchProxyEscapesPath(t *testing.T) {
 
 func TestTestNodeEscapesPath(t *testing.T) {
 	var requestedPath string
+	var requestedQuery string
 	client := NewClient("http://example.invalid")
 	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		requestedPath = r.URL.EscapedPath()
+		requestedQuery = r.URL.RawQuery
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":123}]}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"delay":123}`)),
 		}, nil
 	})}
 	if got := client.TestNode("组 /A", "节点/%25"); got != 123 {
 		t.Fatalf("TestNode() = %d, want 123", got)
 	}
 
-	if requestedPath != "/proxies/%E7%BB%84%20%2FA/%E8%8A%82%E7%82%B9%2F%2525" {
+	if requestedPath != "/proxies/%E8%8A%82%E7%82%B9%2F%2525/delay" {
 		t.Errorf("escaped path = %q", requestedPath)
+	}
+	if requestedQuery != "timeout=5000&url=https%3A%2F%2Fcp.cloudflare.com%2F" {
+		t.Errorf("raw query = %q", requestedQuery)
 	}
 }
 
 func TestTestProxyGroupNodes(t *testing.T) {
-	var requestedPaths []string
+	var requestedTargets []string
 	client := NewClient("http://example.invalid")
 	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		requestedPaths = append(requestedPaths, r.URL.EscapedPath())
+		target := r.URL.EscapedPath()
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		requestedTargets = append(requestedTargets, target)
 		switch r.URL.EscapedPath() {
 		case "/proxies/PROXY":
 			return &http.Response{
@@ -250,23 +259,23 @@ func TestTestProxyGroupNodes(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(strings.NewReader(`{"name":"PROXY","type":"select","now":"Node B","all":["Node A","Node B","Node C"]}`)),
 			}, nil
-		case "/proxies/PROXY/Node%20A":
+		case "/proxies/Node%20A/delay":
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":180}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"delay":180}`)),
 			}, nil
-		case "/proxies/PROXY/Node%20B":
+		case "/proxies/Node%20B/delay":
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":80}]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"delay":80}`)),
 			}, nil
-		case "/proxies/PROXY/Node%20C":
+		case "/proxies/Node%20C/delay":
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(strings.NewReader(`{"history":[]}`)),
+				Body:       io.NopCloser(strings.NewReader(`{"delay":0}`)),
 			}, nil
 		default:
 			return &http.Response{
@@ -293,6 +302,9 @@ func TestTestProxyGroupNodes(t *testing.T) {
 	}
 	if detail.Nodes[2].Delay != 0 {
 		t.Fatalf("Node C delay = %d, want 0", detail.Nodes[2].Delay)
+	}
+	if len(requestedTargets) != 4 {
+		t.Fatalf("requestedTargets = %#v, want 4 requests", requestedTargets)
 	}
 }
 

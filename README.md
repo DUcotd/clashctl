@@ -58,6 +58,7 @@ sudo clashctl install
 
 # 环境自检
 sudo clashctl doctor
+clashctl doctor openai
 
 # 命令式操作
 sudo clashctl export -u "https://你的订阅链接" -o /etc/mihomo/config.yaml
@@ -98,6 +99,7 @@ clashctl nodes test --all-groups
 | `clashctl restart` | 重启 Mihomo |
 | `clashctl status` | 查看运行状态 |
 | `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
+| `clashctl doctor openai` | 诊断 OpenAI/Codex 登录链路 |
 | `clashctl nodes list` | 列出代理节点 |
 | `clashctl nodes test` | 测试代理组节点延迟 |
 | `clashctl nodes use` | 切换代理节点 |

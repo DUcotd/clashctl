@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +18,10 @@ const (
 	APITimeout = 5 * time.Second
 	// APIResponseMaxSize is the maximum size for API error responses (1MB).
 	APIResponseMaxSize = 1024 * 1024
+	// DelayTestURL is the default URL used for active proxy delay checks.
+	DelayTestURL = "https://cp.cloudflare.com/"
+	// DelayTestTimeoutMS is the default timeout used for active proxy delay checks.
+	DelayTestTimeoutMS = 5000
 )
 
 // Client communicates with the Mihomo controller REST API.
@@ -114,14 +120,24 @@ func (c *Client) CheckConnection() error {
 	return err
 }
 
-// TestNode tests a node's latency via the controller API (GET /proxies/{group}/{name}).
+// TestNode actively tests a node's latency via the controller API
+// (GET /proxies/{name}/delay?url=...&timeout=...).
 // Returns the delay in ms (0 = no data, negative = timeout/error).
 func (c *Client) TestNode(groupName, nodeName string) int {
-	type proxyInfo struct {
+	type delayInfo struct {
+		Delay   int       `json:"delay"`
 		History []History `json:"history"`
 	}
 
-	apiURL := fmt.Sprintf("%s/proxies/%s/%s", c.BaseURL, url.PathEscape(groupName), url.PathEscape(nodeName))
+	name := strings.TrimSpace(nodeName)
+	if name == "" {
+		name = strings.TrimSpace(groupName)
+	}
+	params := url.Values{
+		"url":     []string{DelayTestURL},
+		"timeout": []string{strconv.Itoa(DelayTestTimeoutMS)},
+	}
+	apiURL := fmt.Sprintf("%s/proxies/%s/delay?%s", c.BaseURL, url.PathEscape(name), params.Encode())
 	resp, err := c.HTTP.Get(apiURL)
 	if err != nil {
 		return -1
@@ -132,11 +148,14 @@ func (c *Client) TestNode(groupName, nodeName string) int {
 		return -1
 	}
 
-	var info proxyInfo
+	var info delayInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return -1
 	}
 
+	if info.Delay > 0 {
+		return info.Delay
+	}
 	if len(info.History) == 0 {
 		return 0
 	}
