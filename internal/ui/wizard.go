@@ -550,10 +550,20 @@ func (m WizardModel) loadNodes(groupName string) tea.Cmd {
 			return nodesLoadedMsg{err: err.Error()}
 		}
 
+		// Fetch all proxies to get protocol types
+		allProxies, _ := client.GetAllProxies()
+		typeMap := make(map[string]string)
+		if allProxies != nil {
+			for name, info := range allProxies {
+				typeMap[name] = info.Type
+			}
+		}
+
 		items := make([]NodeItem, 0, len(detail.All))
 		for _, name := range detail.All {
 			node := NodeItem{
 				Name:     name,
+				Protocol: typeMap[name],
 				Selected: name == detail.Now,
 			}
 			items = append(items, node)

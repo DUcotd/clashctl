@@ -29,7 +29,8 @@ type History struct {
 type ProxyNode struct {
 	Name     string
 	Type     string
-	Delay    int // latest delay in ms, 0 = unknown, -1 = timeout
+	Protocol string // Vless, Hysteria2, Trojan, etc.
+	Delay    int    // latest delay in ms, 0 = unknown, -1 = timeout
 	Selected bool
 }
 
@@ -49,6 +50,36 @@ func (c *Client) GetAllProxyGroups() (map[string]ProxyGroup, error) {
 
 	var result struct {
 		Proxies map[string]ProxyGroup `json:"proxies"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("解析 API 响应失败: %w", err)
+	}
+
+	return result.Proxies, nil
+}
+
+// ProxyInfo represents a single proxy with its type.
+type ProxyInfo struct {
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	ProviderName string `json:"provider-name"`
+}
+
+// GetAllProxies returns all individual proxies (not just groups) with their types.
+func (c *Client) GetAllProxies() (map[string]ProxyInfo, error) {
+	url := fmt.Sprintf("%s/proxies", c.BaseURL)
+	resp, err := c.HTTP.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("无法连接 controller API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("controller API 返回 %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Proxies map[string]ProxyInfo `json:"proxies"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("解析 API 响应失败: %w", err)

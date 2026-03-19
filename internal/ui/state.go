@@ -54,7 +54,8 @@ type GroupItem struct {
 // NodeItem represents a proxy node in the TUI list.
 type NodeItem struct {
 	Name     string
-	Delay    int  // -1 = timeout, 0 = untested, >0 = delay in ms
+	Protocol string // Vless, Hysteria2, Trojan, etc.
+	Delay    int    // -1 = timeout, 0 = untested, >0 = delay in ms
 	Selected bool
 }
 

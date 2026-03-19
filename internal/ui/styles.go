@@ -108,4 +108,35 @@ var (
 	// Spinner style
 	SpinnerStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF6B9D"))
+
+	// Protocol badges
+	ProtocolVlessStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#60A5FA")).
+				Background(lipgloss.Color("#1E293B")).
+				Padding(0, 1)
+
+	ProtocolHy2Style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#34D399")).
+				Background(lipgloss.Color("#064E3B")).
+				Padding(0, 1)
+
+	ProtocolTrojanStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#F59E0B")).
+				Background(lipgloss.Color("#451A03")).
+				Padding(0, 1)
+
+	ProtocolVMessStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#A78BFA")).
+				Background(lipgloss.Color("#2E1065")).
+				Padding(0, 1)
+
+	ProtocolSSStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#F472B6")).
+				Background(lipgloss.Color("#500724")).
+				Padding(0, 1)
+
+	ProtocolUnknownStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#94A3B8")).
+				Background(lipgloss.Color("#1E293B")).
+				Padding(0, 1)
 )

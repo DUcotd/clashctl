@@ -231,6 +231,11 @@ func (m WizardModel) viewNodeSelect() string {
 
 		line := marker + node.Name
 
+		// Show protocol type
+		if node.Protocol != "" {
+			line += " " + protocolBadge(node.Protocol)
+		}
+
 		if node.Delay != 0 {
 			delayStr := mihomo.FormatDelay(node.Delay)
 			line += " " + delayStyle(node.Delay).Render(delayStr)
@@ -301,6 +306,23 @@ func groupIcon(t string) string {
 		return "⚖️"
 	default:
 		return "📦"
+	}
+}
+
+func protocolBadge(p string) string {
+	switch p {
+	case "Vless":
+		return ProtocolVlessStyle.Render("Vless")
+	case "Hysteria2":
+		return ProtocolHy2Style.Render("Hy2")
+	case "Trojan":
+		return ProtocolTrojanStyle.Render("Trojan")
+	case "VMess":
+		return ProtocolVMessStyle.Render("VMess")
+	case "Shadowsocks":
+		return ProtocolSSStyle.Render("SS")
+	default:
+		return ProtocolUnknownStyle.Render(p)
 	}
 }
 
