@@ -67,6 +67,8 @@ sudo clashctl start
 clashctl status
 clashctl nodes list
 clashctl nodes use "节点名称"
+clashctl nodes test
+clashctl nodes test --all-groups
 ```
 
 ## TUI 节点管理
@@ -97,6 +99,7 @@ clashctl nodes use "节点名称"
 | `clashctl status` | 查看运行状态 |
 | `clashctl doctor` | 环境自检（默认 8 项，`--tun` 时 11 项） |
 | `clashctl nodes list` | 列出代理节点 |
+| `clashctl nodes test` | 测试代理组节点延迟 |
 | `clashctl nodes use` | 切换代理节点 |
 | `clashctl nodes groups` | 列出代理组 |
 | `clashctl config show` | 显示配置内容 |
@@ -110,7 +113,7 @@ clashctl nodes use "节点名称"
 - TUN 模式需要 root 权限
 - Mihomo 会在首次使用时自动下载，也可手动安装
 - `init` 默认优先将订阅转成更适合服务器使用的静态配置，尽量避免服务器再次直连拉取 provider
-- `mixed-port` 模式只提供本地代理端口，服务器流量需要显式配置代理环境变量
+- `mixed-port` 模式会在 `init` 成功后自动写入当前 shell 的代理环境配置；新开终端自动生效，当前终端需手动 `source` 一次
 
 ## 文档
 

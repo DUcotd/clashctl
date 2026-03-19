@@ -3,9 +3,11 @@ package cmd
 import (
 	"fmt"
 
+	"clashctl/internal/core"
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 var statusCmd = &cobra.Command{
@@ -58,6 +60,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Check config path
 	fmt.Printf("  配置目录: %s\n", cfg.ConfigDir)
+	fmt.Printf("  运行模式: %s\n", modeLabel(cfg.Mode))
+	if cfg.Mode == "mixed" {
+		fmt.Printf("  mixed-port: %d\n", cfg.MixedPort)
+	}
+	for _, line := range proxyStatusLines(cfg, system.ProxyEnvForDisplay()) {
+		fmt.Printf("  %s\n", line)
+	}
 
 	// Check controller API
 	if err := client.CheckConnection(); err != nil {
@@ -100,4 +109,34 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func modeLabel(mode string) string {
+	switch mode {
+	case "tun":
+		return "TUN (透明接管)"
+	case "mixed":
+		return "mixed-port"
+	default:
+		return mode
+	}
+}
+
+func proxyStatusLines(cfg *core.AppConfig, proxyEnv []string) []string {
+	if len(proxyEnv) > 0 {
+		lines := []string{"Shell 代理: ✅ 已设置"}
+		for _, entry := range proxyEnv {
+			lines = append(lines, "  "+entry)
+		}
+		return lines
+	}
+
+	if cfg.Mode == "tun" {
+		return []string{"Shell 代理: 未设置 (TUN 模式通常不需要)"}
+	}
+
+	return []string{
+		"Shell 代理: ⚠ 未设置",
+		fmt.Sprintf("  当前为 mixed-port 模式；像 codex/opencode 这类 CLI 需要显式导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 指向 127.0.0.1:%d", cfg.MixedPort),
+	}
 }

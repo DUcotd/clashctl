@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -33,10 +36,25 @@ var nodesGroupsCmd = &cobra.Command{
 	RunE:  runNodesGroups,
 }
 
+var (
+	nodesTestAllGroups  bool
+	nodesTestConcurrent int
+)
+
+var nodesTestCmd = &cobra.Command{
+	Use:   "test [代理组名]",
+	Short: "测试代理组节点延迟",
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runNodesTest,
+}
+
 func init() {
 	nodesCmd.AddCommand(nodesListCmd)
 	nodesCmd.AddCommand(nodesUseCmd)
 	nodesCmd.AddCommand(nodesGroupsCmd)
+	nodesTestCmd.Flags().BoolVar(&nodesTestAllGroups, "all-groups", false, "遍历所有代理组并测速")
+	nodesTestCmd.Flags().IntVar(&nodesTestConcurrent, "concurrency", 10, "并发测速数")
+	nodesCmd.AddCommand(nodesTestCmd)
 	rootCmd.AddCommand(nodesCmd)
 }
 
@@ -120,7 +138,8 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	fmt.Println("📁 代理组列表")
 	fmt.Println()
 
-	for name, group := range groups {
+	for _, name := range sortedProxyGroupNames(groups) {
+		group := groups[name]
 		typ := mihomo.NormalizeProxyType(group.Type)
 		typeIcon := groupTypeIcon(typ)
 		fmt.Printf("  %s %s [%s]", typeIcon, name, typ)
@@ -134,6 +153,68 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	fmt.Println("使用 'clashctl nodes list <组名>' 查看详细节点列表")
 
 	return nil
+}
+
+func runNodesTest(cmd *cobra.Command, args []string) error {
+	cfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+	if nodesTestConcurrent <= 0 {
+		return fmt.Errorf("--concurrency 必须大于 0")
+	}
+
+	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
+
+	groupNames := []string{"PROXY"}
+	if len(args) > 0 {
+		groupNames = []string{args[0]}
+	}
+	if nodesTestAllGroups {
+		groups, err := client.GetAllProxyGroups()
+		if err != nil {
+			return fmt.Errorf("获取代理组列表失败: %w", err)
+		}
+		groupNames = sortedProxyGroupNames(groups)
+	}
+
+	for i, groupName := range groupNames {
+		detail, err := client.TestProxyGroupNodes(groupName, nodesTestConcurrent)
+		if err != nil {
+			return fmt.Errorf("测速代理组 %s 失败: %w", groupName, err)
+		}
+		if i > 0 {
+			fmt.Println()
+		}
+		printProxyGroupLatency(os.Stdout, detail)
+	}
+
+	return nil
+}
+
+func sortedProxyGroupNames(groups map[string]mihomo.ProxyGroup) []string {
+	names := make([]string, 0, len(groups))
+	for name := range groups {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func printProxyGroupLatency(w io.Writer, detail *mihomo.ProxyGroupDetail) {
+	fmt.Fprintf(w, "📡 代理组: %s (%s)\n\n", detail.Name, mihomo.NormalizeProxyType(detail.Type))
+	if detail.Now != "" {
+		fmt.Fprintf(w, "当前选中: %s\n", detail.Now)
+	}
+	fmt.Fprintf(w, "测速完成: %d 个节点\n\n", len(detail.Nodes))
+
+	for i, node := range detail.Nodes {
+		marker := "  "
+		if node.Selected {
+			marker = "▸ "
+		}
+		fmt.Fprintf(w, "  %s%3d. %-40s %s\n", marker, i+1, node.Name, mihomo.FormatDelay(node.Delay))
+	}
 }
 
 func groupTypeIcon(t string) string {

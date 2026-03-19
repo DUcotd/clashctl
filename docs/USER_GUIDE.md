@@ -25,6 +25,8 @@ sudo clashctl init
 
 默认只需要输入订阅 URL 或本地订阅文件路径。`init` 会优先把订阅转成更适合服务器使用的静态配置，尽量减少 provider 拉取失败带来的问题。
 
+如果选择 `mixed-port` 模式，向导会在完成后自动把 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 写入当前用户的 shell 配置文件；新开终端自动生效，当前终端执行一次 `source ~/.bashrc`（或对应 shell 配置文件）即可。
+
 ### clashctl export
 导出 Mihomo 配置文件。
 
@@ -60,6 +62,8 @@ clashctl doctor --tun   # 额外检查 TUN 相关条件
 
 ```bash
 clashctl nodes list [组名]           # 列出节点
+clashctl nodes test [组名]           # 测试一个代理组的全部节点延迟
+clashctl nodes test --all-groups     # 测试所有代理组
 clashctl nodes use "节点名" [组名]    # 切换节点
 clashctl nodes groups               # 列出所有代理组
 ```

@@ -16,7 +16,7 @@ func TestScreenStepLabel(t *testing.T) {
 		want   string
 	}{
 		{ScreenWelcome, "欢迎"},
-		{ScreenSubscription, "步骤 1/8: 输入订阅 URL"},
+		{ScreenSubscription, "步骤 1/8: 选择订阅来源"},
 		{ScreenMode, "步骤 2/8: 选择运行模式"},
 		{ScreenAdvanced, "步骤 3/8: 高级设置"},
 		{ScreenPreview, "步骤 4/8: 配置预览"},
@@ -121,6 +121,9 @@ func TestNewWizardDefaults(t *testing.T) {
 	if wizard.urlInput.Value() != "" {
 		t.Errorf("urlInput should be empty, got %q", wizard.urlInput.Value())
 	}
+	if wizard.sourceMode != SubscriptionSourceURL {
+		t.Errorf("sourceMode = %v, want URL", wizard.sourceMode)
+	}
 	if len(wizard.advancedFields) != 7 {
 		t.Errorf("advancedFields count = %d, want 7", len(wizard.advancedFields))
 	}
@@ -179,12 +182,16 @@ func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
 	if got.appCfg.SubscriptionURL != "https://example.com/sub" {
 		t.Fatalf("SubscriptionURL = %q", got.appCfg.SubscriptionURL)
 	}
+	if got.inlineContent != "" || got.localImportPath != "" {
+		t.Fatalf("unexpected alternate source state: inline=%q file=%q", got.inlineContent, got.localImportPath)
+	}
 }
 
 func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 	wizard.screen = ScreenSubscription
-	wizard.urlInput.SetValue("/tmp/sub.txt")
+	wizard.setSubscriptionSource(SubscriptionSourceFile)
+	wizard.fileInput.SetValue("/tmp/sub.txt")
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
@@ -196,6 +203,42 @@ func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 	}
 	if got.appCfg.SubscriptionURL != "" {
 		t.Fatalf("SubscriptionURL = %q, want empty for local import", got.appCfg.SubscriptionURL)
+	}
+}
+
+func TestSubscriptionCtrlSUsesInlineContent(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+	wizard.setSubscriptionSource(SubscriptionSourceInline)
+	wizard.inlineInput.SetValue("vless://abc@example.com:443?security=tls#NodeA")
+
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyCtrlS})
+	got := updated.(WizardModel)
+	if got.screen != ScreenMode {
+		t.Fatalf("screen = %v, want ScreenMode", got.screen)
+	}
+	if got.inlineContent == "" {
+		t.Fatal("inlineContent should be captured")
+	}
+	if got.appCfg.SubscriptionURL != "" || got.localImportPath != "" {
+		t.Fatalf("unexpected alternate source state: url=%q file=%q", got.appCfg.SubscriptionURL, got.localImportPath)
+	}
+}
+
+func TestSubscriptionTabCyclesSources(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyTab})
+	got := updated.(WizardModel)
+	if got.sourceMode != SubscriptionSourceInline {
+		t.Fatalf("sourceMode after tab = %v, want inline", got.sourceMode)
+	}
+
+	updated, _ = got.updateSubscription(tea.KeyMsg{Type: tea.KeyTab})
+	got = updated.(WizardModel)
+	if got.sourceMode != SubscriptionSourceFile {
+		t.Fatalf("sourceMode after second tab = %v, want file", got.sourceMode)
 	}
 }
 
@@ -231,8 +274,24 @@ func TestSubscriptionViewDoesNotPanicWithPlaceholder(t *testing.T) {
 	}()
 
 	view := wizard.View()
-	if !strings.Contains(view, "https://example.com/sub or /path/to/sub.txt") {
-		t.Fatalf("subscription view missing placeholder text: %s", view)
+	if !strings.Contains(view, "选择订阅来源") {
+		t.Fatalf("subscription view missing source header: %s", view)
+	}
+	if !strings.Contains(view, "订阅 URL") || !strings.Contains(view, "直接粘贴") || !strings.Contains(view, "本地文件") {
+		t.Fatalf("subscription view missing source selector: %s", view)
+	}
+}
+
+func TestPreviewSourceForInlineContent(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.inlineContent = "dmxlc3M6Ly9hYmNAZXhhbXBsZS5jb206NDQzP3NlY3VyaXR5PXRscyNOb2RlQQ=="
+
+	label, value := wizard.previewSource()
+	if label != "直接粘贴内容" {
+		t.Fatalf("label = %q", label)
+	}
+	if !strings.Contains(value, "Base64 节点订阅") {
+		t.Fatalf("value = %q", value)
 	}
 }
 

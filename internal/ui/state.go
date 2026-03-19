@@ -24,7 +24,7 @@ func (s Screen) StepLabel() string {
 	case ScreenWelcome:
 		return "欢迎"
 	case ScreenSubscription:
-		return "步骤 1/8: 输入订阅 URL"
+		return "步骤 1/8: 选择订阅来源"
 	case ScreenMode:
 		return "步骤 2/8: 选择运行模式"
 	case ScreenAdvanced:
@@ -43,6 +43,28 @@ func (s Screen) StepLabel() string {
 		return "步骤 8/8: 选择节点"
 	default:
 		return ""
+	}
+}
+
+// SubscriptionSource represents how the wizard receives subscription content.
+type SubscriptionSource int
+
+const (
+	SubscriptionSourceURL SubscriptionSource = iota
+	SubscriptionSourceInline
+	SubscriptionSourceFile
+)
+
+func (s SubscriptionSource) Title() string {
+	switch s {
+	case SubscriptionSourceURL:
+		return "订阅 URL"
+	case SubscriptionSourceInline:
+		return "直接粘贴"
+	case SubscriptionSourceFile:
+		return "本地文件"
+	default:
+		return "未知"
 	}
 }
 

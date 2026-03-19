@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,7 +25,10 @@ type WizardModel struct {
 	quitting bool
 
 	// Subscription URL input
-	urlInput textinput.Model
+	sourceMode  SubscriptionSource
+	urlInput    textinput.Model
+	fileInput   textinput.Model
+	inlineInput textarea.Model
 
 	// Mode selection
 	modeIndex int // 0 = TUN, 1 = mixed-port
@@ -40,6 +44,7 @@ type WizardModel struct {
 	canImportFallback bool
 	importHint        string
 	localImportPath   string
+	inlineContent     string
 	importInput       textinput.Model
 	loadError         string
 
@@ -117,6 +122,22 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	urlInput.PromptStyle = InputStyle
 	urlInput.TextStyle = InputStyle
 
+	fileInput := textinput.New()
+	fileInput.Placeholder = "/path/to/sub.txt"
+	fileInput.Width = 60
+	fileInput.Prompt = "› "
+	fileInput.PromptStyle = InputStyle
+	fileInput.TextStyle = InputStyle
+
+	inlineInput := textarea.New()
+	inlineInput.Placeholder = "Paste base64, raw vless:// links, trojan:// links, hysteria2:// links, or Clash/Mihomo YAML here"
+	inlineInput.Prompt = "› "
+	inlineInput.ShowLineNumbers = false
+	inlineInput.SetWidth(60)
+	inlineInput.SetHeight(8)
+	inlineInput.CharLimit = 0
+	inlineInput.MaxHeight = 12
+
 	// Advanced fields
 	fields := []string{
 		"配置目录",
@@ -168,8 +189,11 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	return WizardModel{
 		screen:         ScreenWelcome,
 		appCfg:         appCfg,
+		sourceMode:     SubscriptionSourceURL,
 		modeIndex:      modeIndex,
 		urlInput:       urlInput,
+		fileInput:      fileInput,
+		inlineInput:    inlineInput,
 		advancedFields: fields,
 		advancedInputs: advInputs,
 		spinner:        s,
@@ -308,6 +332,7 @@ func max(a, b int) int {
 func (m WizardModel) updateWelcome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
+		m.focusSubscriptionInput()
 		m.setScreen(ScreenSubscription)
 		return m, nil
 	case "q", "esc":
@@ -319,27 +344,107 @@ func (m WizardModel) updateWelcome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "left", "shift+tab":
+		m.setSubscriptionSource((m.sourceMode + 2) % 3)
+		return m, nil
+	case "right", "tab":
+		m.setSubscriptionSource((m.sourceMode + 1) % 3)
+		return m, nil
 	case "enter":
-		input := strings.TrimSpace(m.urlInput.Value())
-		if input == "" {
-			return m, nil
+		if m.sourceMode == SubscriptionSourceInline {
+			var cmd tea.Cmd
+			m.inlineInput, cmd = m.inlineInput.Update(msg)
+			return m, cmd
 		}
-		if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
-			m.appCfg.SubscriptionURL = input
-			m.localImportPath = ""
-		} else {
-			m.localImportPath = input
-			m.appCfg.SubscriptionURL = ""
+		if !m.commitSubscriptionSelection() {
+			return m, nil
 		}
 		m.setScreen(ScreenMode)
 		return m, nil
+	case "ctrl+s":
+		if m.sourceMode == SubscriptionSourceInline {
+			if !m.commitSubscriptionSelection() {
+				return m, nil
+			}
+			m.setScreen(ScreenMode)
+			return m, nil
+		}
 	case "esc":
 		m.setScreen(ScreenWelcome)
 		return m, nil
 	default:
+		return m.updateSubscriptionInput(msg)
+	}
+	return m, nil
+}
+
+func (m *WizardModel) setSubscriptionSource(source SubscriptionSource) {
+	m.sourceMode = source
+	m.focusSubscriptionInput()
+}
+
+func (m *WizardModel) focusSubscriptionInput() {
+	m.urlInput.Blur()
+	m.fileInput.Blur()
+	m.inlineInput.Blur()
+	switch m.sourceMode {
+	case SubscriptionSourceURL:
+		m.urlInput.Focus()
+	case SubscriptionSourceFile:
+		m.fileInput.Focus()
+	case SubscriptionSourceInline:
+		_ = m.inlineInput.Focus()
+	}
+}
+
+func (m *WizardModel) updateSubscriptionInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.sourceMode {
+	case SubscriptionSourceURL:
 		var cmd tea.Cmd
 		m.urlInput, cmd = m.urlInput.Update(msg)
 		return m, cmd
+	case SubscriptionSourceFile:
+		var cmd tea.Cmd
+		m.fileInput, cmd = m.fileInput.Update(msg)
+		return m, cmd
+	case SubscriptionSourceInline:
+		var cmd tea.Cmd
+		m.inlineInput, cmd = m.inlineInput.Update(msg)
+		return m, cmd
+	default:
+		return m, nil
+	}
+}
+
+func (m *WizardModel) commitSubscriptionSelection() bool {
+	m.appCfg.SubscriptionURL = ""
+	m.localImportPath = ""
+	m.inlineContent = ""
+
+	switch m.sourceMode {
+	case SubscriptionSourceURL:
+		input := strings.TrimSpace(m.urlInput.Value())
+		if input == "" {
+			return false
+		}
+		m.appCfg.SubscriptionURL = input
+		return true
+	case SubscriptionSourceFile:
+		input := strings.TrimSpace(m.fileInput.Value())
+		if input == "" {
+			return false
+		}
+		m.localImportPath = input
+		return true
+	case SubscriptionSourceInline:
+		input := strings.TrimSpace(m.inlineInput.Value())
+		if input == "" {
+			return false
+		}
+		m.inlineContent = input
+		return true
+	default:
+		return false
 	}
 }
 
@@ -433,6 +538,9 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if strings.TrimSpace(m.localImportPath) != "" {
 			return m, tea.Batch(m.spinner.Tick, m.runImportExecution(m.localImportPath))
 		}
+		if strings.TrimSpace(m.inlineContent) != "" {
+			return m, tea.Batch(m.spinner.Tick, m.runInlineExecution(m.inlineContent))
+		}
 		return m, tea.Batch(m.spinner.Tick, m.runExecution())
 	case "esc":
 		m.setScreen(ScreenAdvanced)
@@ -458,6 +566,19 @@ func (m WizardModel) runExecution() tea.Cmd {
 func (m WizardModel) runImportExecution(filePath string) tea.Cmd {
 	return func() tea.Msg {
 		steps := m.executeImport(filePath)
+		canImport, importHint := detectImportFallback(steps)
+		return executionDoneMsg{
+			steps:           steps,
+			controllerReady: m.controllerAvailable,
+			canImport:       canImport,
+			importHint:      importHint,
+		}
+	}
+}
+
+func (m WizardModel) runInlineExecution(content string) tea.Cmd {
+	return func() tea.Msg {
+		steps := m.executeInlineContent(content)
 		canImport, importHint := detectImportFallback(steps)
 		return executionDoneMsg{
 			steps:           steps,
@@ -798,30 +919,17 @@ func (m WizardModel) testAllNodes() tea.Cmd {
 	return func() tea.Msg {
 		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
 		delays := make(map[int]int)
-
-		// Limit concurrent requests to avoid overwhelming the subscription server
-		const maxConcurrent = 10
-		sem := make(chan struct{}, maxConcurrent)
-		ch := make(chan struct {
-			index int
-			delay int
-		}, len(m.nodes))
-
-		for i, node := range m.nodes {
-			sem <- struct{}{} // acquire slot
-			go func(idx int, name string) {
-				defer func() { <-sem }() // release slot
-				delay := client.TestNode(m.selectedGroup, name)
-				ch <- struct {
-					index int
-					delay int
-				}{idx, delay}
-			}(i, node.Name)
+		detail, err := client.TestProxyGroupNodes(m.selectedGroup, 10)
+		if err != nil {
+			return nodeTestedMsg{delays: delays}
 		}
-
-		for range m.nodes {
-			r := <-ch
-			delays[r.index] = r.delay
+		for _, tested := range detail.Nodes {
+			for i, node := range m.nodes {
+				if node.Name == tested.Name {
+					delays[i] = tested.Delay
+					break
+				}
+			}
 		}
 
 		return nodeTestedMsg{delays: delays}

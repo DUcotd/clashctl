@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 func (m WizardModel) viewWelcome() string {
@@ -16,7 +17,7 @@ func (m WizardModel) viewWelcome() string {
 		"",
 		"这个向导将帮助你：",
 		"",
-		"• 输入机场订阅 URL 或后续改走本地订阅导入",
+		"• 输入机场订阅 URL、直接粘贴订阅内容，或使用本地订阅文件",
 		"• 选择 TUN / mixed-port 运行模式",
 		"• 调整高级设置（可选）",
 		"• 自动生成并写入 Mihomo 配置",
@@ -29,11 +30,28 @@ func (m WizardModel) viewWelcome() string {
 }
 
 func (m WizardModel) viewSubscription() string {
-	content := HeaderStyle.Render("输入订阅链接或本地订阅文件") + "\n\n" +
-		InfoStyle.Render("推荐直接粘贴订阅 URL；如果服务器拉取失败，也可以填本地文件路径") + "\n" +
-		InfoStyle.Render("默认会自动转换成更适合服务器的静态配置，尽量减少后续问题") + "\n\n" +
-		m.urlInput.View() + "\n\n" +
-		HelpStyle.Render("Enter 下一步 │ Esc 返回")
+	m.inlineInput.SetWidth(max(40, m.width-16))
+	m.inlineInput.SetHeight(8)
+
+	selector := renderSourceSelector(m.sourceMode)
+	content := HeaderStyle.Render("选择订阅来源") + "\n\n" + selector + "\n\n"
+
+	switch m.sourceMode {
+	case SubscriptionSourceURL:
+		content += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
+		content += m.urlInput.View() + "\n\n"
+		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 返回")
+	case SubscriptionSourceInline:
+		content += InfoStyle.Render("可直接粘贴 Base64、原始节点链接列表或 Mihomo/Clash YAML") + "\n"
+		content += InfoStyle.Render("多行内容请在这里完整粘贴；使用 Ctrl+S 继续下一步") + "\n\n"
+		content += m.inlineInput.View() + "\n\n"
+		content += HelpStyle.Render("←/→ 切换来源 │ Ctrl+S 下一步 │ Esc 返回")
+	case SubscriptionSourceFile:
+		content += InfoStyle.Render("适合服务器无法直连订阅时使用本地文件导入") + "\n"
+		content += InfoStyle.Render("支持 Base64 原始订阅、解码后的节点链接列表或 YAML 文件") + "\n\n"
+		content += m.fileInput.View() + "\n\n"
+		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 返回")
+	}
 
 	return BoxStyle.Render(content)
 }
@@ -81,12 +99,7 @@ func (m WizardModel) viewAdvanced() string {
 
 func (m WizardModel) viewPreview() string {
 	cfg := m.appCfg
-	sourceLabel := "订阅 URL"
-	sourceValue := cfg.SubscriptionURL
-	if strings.TrimSpace(m.localImportPath) != "" {
-		sourceLabel = "本地订阅文件"
-		sourceValue = m.localImportPath
-	}
+	sourceLabel, sourceValue := m.previewSource()
 
 	width, _ := m.baseViewportSize()
 	rows := []string{
@@ -103,6 +116,51 @@ func (m WizardModel) viewPreview() string {
 		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
 	}
 	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 确认并开始配置 │ Esc 返回修改")
+}
+
+func renderSourceSelector(current SubscriptionSource) string {
+	options := []SubscriptionSource{
+		SubscriptionSourceURL,
+		SubscriptionSourceInline,
+		SubscriptionSourceFile,
+	}
+	parts := make([]string, 0, len(options))
+	for _, opt := range options {
+		label := opt.Title()
+		if opt == current {
+			parts = append(parts, SelectedStyle.Render("▣ "+label))
+		} else {
+			parts = append(parts, UnselectedStyle.Render("□ "+label))
+		}
+	}
+	return strings.Join(parts, "   ")
+}
+
+func (m WizardModel) previewSource() (string, string) {
+	switch {
+	case strings.TrimSpace(m.inlineContent) != "":
+		content := strings.TrimSpace(m.inlineContent)
+		contentKind := system.ProbeContentKind([]byte(content))
+		detail := fmt.Sprintf("%s (%d bytes)", inlineContentKindLabel(contentKind), len(content))
+		return "直接粘贴内容", detail
+	case strings.TrimSpace(m.localImportPath) != "":
+		return "本地订阅文件", m.localImportPath
+	default:
+		return "订阅 URL", m.appCfg.SubscriptionURL
+	}
+}
+
+func inlineContentKindLabel(kind string) string {
+	switch kind {
+	case "base64-links":
+		return "Base64 节点订阅"
+	case "raw-links":
+		return "原始节点链接"
+	case "mihomo-yaml":
+		return "Mihomo/Clash YAML"
+	default:
+		return "未识别内容"
+	}
 }
 
 func (m WizardModel) viewExecution() string {

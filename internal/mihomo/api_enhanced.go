@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ProxyGroupDetail is the enhanced proxy group info with full node details.
@@ -196,6 +197,35 @@ func (d *ProxyGroupDetail) SortNodesByDelay() {
 		}
 		return ai < aj
 	})
+}
+
+// TestProxyGroupNodes refreshes delay for all nodes in a group with bounded concurrency.
+func (c *Client) TestProxyGroupNodes(name string, maxConcurrent int) (*ProxyGroupDetail, error) {
+	detail, err := c.GetProxyGroupDetail(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if maxConcurrent <= 0 {
+		maxConcurrent = 10
+	}
+
+	sem := make(chan struct{}, maxConcurrent)
+	var wg sync.WaitGroup
+
+	for i := range detail.Nodes {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			detail.Nodes[idx].Delay = c.TestNode(name, detail.Nodes[idx].Name)
+		}(i)
+	}
+
+	wg.Wait()
+	detail.SortNodesByDelay()
+	return detail, nil
 }
 
 // FormatDelay returns a human-readable delay string.

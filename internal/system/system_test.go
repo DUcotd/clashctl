@@ -2,7 +2,10 @@ package system
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +85,89 @@ func TestStripProxyEnv(t *testing.T) {
 	got := StripProxyEnv(env)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("StripProxyEnv() = %#v, want %#v", got, want)
+	}
+}
+
+func TestProxyEnvForDisplay(t *testing.T) {
+	t.Setenv("http_proxy", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("all_proxy", "")
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:7890")
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+	t.Setenv("ALL_PROXY", "")
+
+	got := ProxyEnvForDisplay()
+	want := []string{
+		"HTTP_PROXY=http://127.0.0.1:7890",
+		"HTTPS_PROXY=http://127.0.0.1:7890",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ProxyEnvForDisplay() = %#v, want %#v", got, want)
+	}
+}
+
+func TestPersistShellProxyEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
+
+	result, err := PersistShellProxyEnv(7890)
+	if err != nil {
+		t.Fatalf("PersistShellProxyEnv() error: %v", err)
+	}
+
+	if result.ProfilePath != filepath.Join(home, ".bashrc") {
+		t.Fatalf("ProfilePath = %q", result.ProfilePath)
+	}
+	script, err := os.ReadFile(result.ScriptPath)
+	if err != nil {
+		t.Fatalf("ReadFile(script) error: %v", err)
+	}
+	if !strings.Contains(string(script), `export HTTP_PROXY="http://127.0.0.1:7890"`) {
+		t.Fatalf("script content = %s", string(script))
+	}
+
+	profile, err := os.ReadFile(result.ProfilePath)
+	if err != nil {
+		t.Fatalf("ReadFile(profile) error: %v", err)
+	}
+	if !strings.Contains(string(profile), clashctlProxyBlockStart) {
+		t.Fatalf("profile missing managed block: %s", string(profile))
+	}
+
+	if _, err := PersistShellProxyEnv(7891); err != nil {
+		t.Fatalf("second PersistShellProxyEnv() error: %v", err)
+	}
+	profile, err = os.ReadFile(result.ProfilePath)
+	if err != nil {
+		t.Fatalf("ReadFile(profile) error: %v", err)
+	}
+	if strings.Count(string(profile), clashctlProxyBlockStart) != 1 {
+		t.Fatalf("expected one managed block, got profile: %s", string(profile))
+	}
+}
+
+func TestRemoveShellProxyEnv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
+
+	result, err := PersistShellProxyEnv(7890)
+	if err != nil {
+		t.Fatalf("PersistShellProxyEnv() error: %v", err)
+	}
+	if _, err := RemoveShellProxyEnv(); err != nil {
+		t.Fatalf("RemoveShellProxyEnv() error: %v", err)
+	}
+
+	profile, err := os.ReadFile(result.ProfilePath)
+	if err != nil {
+		t.Fatalf("ReadFile(profile) error: %v", err)
+	}
+	if strings.Contains(string(profile), clashctlProxyBlockStart) {
+		t.Fatalf("profile should not contain managed block: %s", string(profile))
+	}
+	if _, err := os.Stat(result.ScriptPath); !os.IsNotExist(err) {
+		t.Fatalf("script should be removed, stat err = %v", err)
 	}
 }

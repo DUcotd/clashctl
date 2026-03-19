@@ -106,6 +106,33 @@ func HasProxyEnvForDisplay() bool {
 	return hasProxyEnv()
 }
 
+// ProxyEnvForDisplay returns the currently exported proxy variables.
+func ProxyEnvForDisplay() []string {
+	keys := []string{
+		"http_proxy",
+		"https_proxy",
+		"all_proxy",
+		"HTTP_PROXY",
+		"HTTPS_PROXY",
+		"ALL_PROXY",
+	}
+	seen := make(map[string]struct{}, len(keys))
+	var out []string
+	for _, key := range keys {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value == "" {
+			continue
+		}
+		entry := key + "=" + value
+		if _, ok := seen[entry]; ok {
+			continue
+		}
+		seen[entry] = struct{}{}
+		out = append(out, entry)
+	}
+	return out
+}
+
 // StripProxyEnv removes proxy-related variables from an environment list.
 func StripProxyEnv(env []string) []string {
 	blocked := map[string]struct{}{

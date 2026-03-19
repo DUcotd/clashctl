@@ -57,6 +57,7 @@ func (m WizardModel) executeFull() []ExecStep {
 		return steps
 	}
 	m.appendStartResult(startResult, &steps)
+	m.stepManageShellProxyEnv(&steps)
 	return steps
 }
 
@@ -222,6 +223,46 @@ func (m WizardModel) stepSaveAppConfig(steps *[]ExecStep, extraDetail string) bo
 	return true
 }
 
+func (m WizardModel) stepManageShellProxyEnv(steps *[]ExecStep) {
+	if m.appCfg.Mode == "mixed" {
+		result, err := system.PersistShellProxyEnv(m.appCfg.MixedPort)
+		if err != nil {
+			*steps = append(*steps, ExecStep{
+				Label:   "持久化 shell 代理环境",
+				Success: false,
+				Detail:  err.Error(),
+			})
+			return
+		}
+		*steps = append(*steps, ExecStep{
+			Label:   "持久化 shell 代理环境",
+			Success: true,
+			Detail: fmt.Sprintf(
+				"已写入 %s\n代理脚本: %s\n新开终端会自动生效；当前终端请执行: source %s",
+				result.ProfilePath,
+				result.ScriptPath,
+				result.ProfilePath,
+			),
+		})
+		return
+	}
+
+	result, err := system.RemoveShellProxyEnv()
+	if err != nil {
+		*steps = append(*steps, ExecStep{
+			Label:   "清理 shell 代理环境",
+			Success: false,
+			Detail:  err.Error(),
+		})
+		return
+	}
+	*steps = append(*steps, ExecStep{
+		Label:   "清理 shell 代理环境",
+		Success: true,
+		Detail:  fmt.Sprintf("已移除 clashctl 管理的 shell 代理设置: %s", result.ProfilePath),
+	})
+}
+
 func (m *WizardModel) appendStartResult(result *mihomo.StartResult, steps *[]ExecStep) {
 	if result == nil {
 		return
@@ -340,42 +381,58 @@ func (m WizardModel) executeImport(filePath string) []ExecStep {
 		Detail:  fmt.Sprintf("已读取 %s (%d bytes)", filePath, len(data)),
 	})
 
+	return m.executeResolvedContent(data, &steps, "解析本地订阅文件", "提示: 当前使用静态导入配置，后续不会依赖服务器直连订阅 URL")
+}
+
+func (m WizardModel) executeInlineContent(content string) []ExecStep {
+	var steps []ExecStep
+	data := []byte(content)
+	steps = append(steps, ExecStep{
+		Label:   "读取粘贴订阅内容",
+		Success: true,
+		Detail:  fmt.Sprintf("已接收 %d bytes 的订阅内容", len(data)),
+	})
+
+	return m.executeResolvedContent(data, &steps, "解析粘贴订阅内容", "提示: 当前使用直接粘贴的静态内容，原始订阅内容不会写入 clashctl 配置")
+}
+
+func (m WizardModel) executeResolvedContent(data []byte, steps *[]ExecStep, parseLabel, saveDetail string) []ExecStep {
 	runtime := mihomo.NewRuntimeManager()
 	resolver := subscription.NewResolver()
 
-	m.stepResolveRuntimeConfig(runtime, &steps)
+	m.stepResolveRuntimeConfig(runtime, steps)
 
 	plan, err := resolver.ResolveContent(m.appCfg, data)
 	if err != nil {
-		steps = append(steps, ExecStep{
-			Label:   "解析本地订阅文件",
+		*steps = append(*steps, ExecStep{
+			Label:   parseLabel,
 			Success: false,
 			Detail:  err.Error(),
 		})
 		m.controllerAvailable = false
-		return steps
+		return *steps
 	}
-	steps = append(steps, ExecStep{
-		Label:   "解析本地订阅文件",
+	*steps = append(*steps, ExecStep{
+		Label:   parseLabel,
 		Success: true,
 		Detail:  plan.Summary,
 	})
 
 	configPath := filepath.Join(m.appCfg.ConfigDir, "config.yaml")
-	if !m.stepWritePlan(plan, configPath, &steps) {
+	if !m.stepWritePlan(plan, configPath, steps) {
 		m.controllerAvailable = false
-		return steps
+		return *steps
 	}
 
-	if !m.stepSaveAppConfig(&steps, "提示: 当前使用静态导入配置，后续不会依赖服务器直连订阅 URL") {
+	if !m.stepSaveAppConfig(steps, saveDetail) {
 		m.controllerAvailable = false
-		return steps
+		return *steps
 	}
 
-	binary, ok := m.stepEnsureBinary(runtime, &steps)
+	binary, ok := m.stepEnsureBinary(runtime, steps)
 	if !ok {
 		m.controllerAvailable = false
-		return steps
+		return *steps
 	}
 
 	startResult, err := runtime.StartWithBinary(m.appCfg, binary, mihomo.StartOptions{
@@ -384,16 +441,17 @@ func (m WizardModel) executeImport(filePath string) []ExecStep {
 		WaitInterval:    2 * time.Second,
 	})
 	if err != nil {
-		m.appendStartResult(startResult, &steps)
-		steps = append(steps, ExecStep{
+		m.appendStartResult(startResult, steps)
+		*steps = append(*steps, ExecStep{
 			Label:   "启动 Mihomo",
 			Success: false,
 			Detail:  err.Error(),
 		})
 		m.controllerAvailable = false
-		return steps
+		return *steps
 	}
 
-	m.appendStartResult(startResult, &steps)
-	return steps
+	m.appendStartResult(startResult, steps)
+	m.stepManageShellProxyEnv(steps)
+	return *steps
 }

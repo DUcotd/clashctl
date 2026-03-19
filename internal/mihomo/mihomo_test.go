@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -234,6 +235,64 @@ func TestTestNodeEscapesPath(t *testing.T) {
 
 	if requestedPath != "/proxies/%E7%BB%84%20%2FA/%E8%8A%82%E7%82%B9%2F%2525" {
 		t.Errorf("escaped path = %q", requestedPath)
+	}
+}
+
+func TestTestProxyGroupNodes(t *testing.T) {
+	var requestedPaths []string
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		requestedPaths = append(requestedPaths, r.URL.EscapedPath())
+		switch r.URL.EscapedPath() {
+		case "/proxies/PROXY":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"name":"PROXY","type":"select","now":"Node B","all":["Node A","Node B","Node C"]}`)),
+			}, nil
+		case "/proxies/PROXY/Node%20A":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":180}]}`)),
+			}, nil
+		case "/proxies/PROXY/Node%20B":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"history":[{"time":"2026-03-19T00:00:00Z","delay":80}]}`)),
+			}, nil
+		case "/proxies/PROXY/Node%20C":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"history":[]}`)),
+			}, nil
+		default:
+			return &http.Response{
+				StatusCode: http.StatusNotFound,
+				Body:       io.NopCloser(strings.NewReader(`not found`)),
+			}, nil
+		}
+	})}
+
+	detail, err := client.TestProxyGroupNodes("PROXY", 2)
+	if err != nil {
+		t.Fatalf("TestProxyGroupNodes() error: %v", err)
+	}
+
+	if detail.Name != "PROXY" {
+		t.Fatalf("detail.Name = %q, want PROXY", detail.Name)
+	}
+
+	if got := []string{detail.Nodes[0].Name, detail.Nodes[1].Name, detail.Nodes[2].Name}; !slices.Equal(got, []string{"Node B", "Node A", "Node C"}) {
+		t.Fatalf("sorted nodes = %#v", got)
+	}
+	if detail.Nodes[0].Delay != 80 || !detail.Nodes[0].Selected {
+		t.Fatalf("Node B = %#v, want selected with 80ms", detail.Nodes[0])
+	}
+	if detail.Nodes[2].Delay != 0 {
+		t.Fatalf("Node C delay = %d, want 0", detail.Nodes[2].Delay)
 	}
 }
 
