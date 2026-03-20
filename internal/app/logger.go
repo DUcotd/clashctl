@@ -3,8 +3,11 @@ package app
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -35,6 +38,54 @@ func EnsureLogDir() error {
 	return os.MkdirAll(dir, 0755)
 }
 
+// sanitizeForLog removes sensitive information from log strings.
+func sanitizeForLog(input string) string {
+	result := input
+
+	// Sanitize URLs - keep only scheme and host
+	urlRegex := regexp.MustCompile(`(https?://)([^/]*@)?([^/\s]+)([^\s]*)`)
+	result = urlRegex.ReplaceAllStringFunc(result, func(match string) string {
+		u, err := url.Parse(match)
+		if err != nil {
+			return "[URL_REDACTED]"
+		}
+		// Keep scheme and host, redact path and query
+		sanitized := u.Scheme + "://" + u.Host
+		if u.Path != "" || u.RawQuery != "" {
+			sanitized += "/[PATH_REDACTED]"
+		}
+		return sanitized
+	})
+
+	// Sanitize UUIDs
+	uuidRegex := regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	result = uuidRegex.ReplaceAllString(result, "[UUID_REDACTED]")
+
+	// Sanitize passwords/tokens (common patterns)
+	passwordPatterns := []struct {
+		regex *regexp.Regexp
+	}{
+		{regexp.MustCompile(`(?i)(password|passwd|pwd|token|secret|key|auth)[=:\s]+[^\s&;]+`)},
+		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`)},  // GitHub tokens
+		{regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._~+/=-]+`)},              // Bearer tokens
+	}
+
+	for _, p := range passwordPatterns {
+		result = p.regex.ReplaceAllStringFunc(result, func(match string) string {
+			// Find the key part and redact the value
+			for _, prefix := range []string{"password", "passwd", "pwd", "token", "secret", "key", "auth", "Bearer", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"} {
+				idx := strings.Index(strings.ToLower(match), strings.ToLower(prefix))
+				if idx >= 0 {
+					return match[:idx+len(prefix)] + "=[REDACTED]"
+				}
+			}
+			return "[REDACTED]"
+		})
+	}
+
+	return result
+}
+
 // LogOperation records an operation to the audit log.
 func LogOperation(operation string, success bool, detail string) error {
 	if err := EnsureLogDir(); err != nil {
@@ -54,14 +105,18 @@ func LogOperation(operation string, success bool, detail string) error {
 		level = LogLevelError
 	}
 
+	// Sanitize sensitive data before logging
+	sanitizedOp := sanitizeForLog(operation)
+	sanitizedDetail := sanitizeForLog(detail)
+
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	logEntry := fmt.Sprintf("[%s] %s - %s", timestamp, level, operation)
-	if detail != "" {
-		logEntry += " | " + detail
+	logEntry := fmt.Sprintf("[%s] %s - %s", timestamp, level, sanitizedOp)
+	if sanitizedDetail != "" {
+		logEntry += " | " + sanitizedDetail
 	}
 	logEntry += "\n"
 
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("打开日志文件失败: %w", err)
 	}

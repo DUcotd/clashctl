@@ -3,11 +3,19 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// MaxConfigFileSize is the maximum allowed config file size (10MB)
+	MaxConfigFileSize = 10 * 1024 * 1024
+	// MaxProxyCount is the maximum number of proxies to prevent memory exhaustion
+	MaxProxyCount = 50000
 )
 
 // BackupFile creates a timestamped backup of an existing file.
@@ -48,14 +56,77 @@ func WriteConfig(path string, data []byte) error {
 
 // ValidateYAML reads back a YAML file and checks it can be parsed.
 func ValidateYAML(path string) error {
-	data, err := os.ReadFile(path)
+	data, err := ReadConfigWithLimit(path)
 	if err != nil {
-		return fmt.Errorf("读取 %s 失败: %w", path, err)
+		return err
 	}
 
 	var dummy any
 	if err := yaml.Unmarshal(data, &dummy); err != nil {
 		return fmt.Errorf("YAML 解析错误 %s: %w", path, err)
+	}
+
+	return nil
+}
+
+// ReadConfigWithLimit reads a config file with size limit.
+func ReadConfigWithLimit(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取 %s 失败: %w", path, err)
+	}
+	defer f.Close()
+
+	// Check file size
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("获取文件信息失败: %w", err)
+	}
+
+	if info.Size() > MaxConfigFileSize {
+		return nil, fmt.Errorf("配置文件过大: %d bytes (最大允许 %d bytes)，建议拆分配置", info.Size(), MaxConfigFileSize)
+	}
+
+	// Read with limit
+	data, err := io.ReadAll(io.LimitReader(f, MaxConfigFileSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("读取配置失败: %w", err)
+	}
+
+	if len(data) > MaxConfigFileSize {
+		return nil, fmt.Errorf("配置文件过大 (超过 %d bytes)，建议拆分配置", MaxConfigFileSize)
+	}
+
+	return data, nil
+}
+
+// ValidateProxyCount checks if a config has too many proxies.
+func ValidateProxyCount(data []byte) error {
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil // Will be caught by other validation
+	}
+
+	// Check proxies count
+	if proxies, ok := doc["proxies"].([]any); ok {
+		if len(proxies) > MaxProxyCount {
+			return fmt.Errorf("代理节点数量过多: %d (最大允许 %d)，建议拆分配置", len(proxies), MaxProxyCount)
+		}
+	}
+
+	// Check proxy-providers
+	if providers, ok := doc["proxy-providers"].(map[string]any); ok {
+		totalProxies := 0
+		for _, provider := range providers {
+			if p, ok := provider.(map[string]any); ok {
+				if urls, ok := p["url"].([]any); ok {
+					totalProxies += len(urls)
+				}
+			}
+		}
+		if totalProxies > MaxProxyCount {
+			return fmt.Errorf("Provider 代理节点数量过多: %d (最大允许 %d)", totalProxies, MaxProxyCount)
+		}
 	}
 
 	return nil
@@ -73,10 +144,16 @@ func NewLoader(path string) *Loader {
 
 // Load reads and unmarshals the YAML config file into dest.
 func (l *Loader) Load(dest any) error {
-	data, err := os.ReadFile(l.Path)
+	data, err := ReadConfigWithLimit(l.Path)
 	if err != nil {
-		return fmt.Errorf("读取配置文件 %s 失败: %w", l.Path, err)
+		return err
 	}
+
+	// Validate proxy count before parsing
+	if err := ValidateProxyCount(data); err != nil {
+		return err
+	}
+
 	if err := yaml.Unmarshal(data, dest); err != nil {
 		return fmt.Errorf("解析 YAML 文件 %s 失败: %w", l.Path, err)
 	}

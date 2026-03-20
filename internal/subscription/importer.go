@@ -245,7 +245,47 @@ func decodeName(raw string) string {
 	if err != nil {
 		return raw
 	}
-	return name
+	return sanitizeNodeName(name)
+}
+
+// sanitizeNodeName cleans up node names for safe use in configs.
+// It removes or replaces characters that could cause issues.
+func sanitizeNodeName(name string) string {
+	if name == "" {
+		return "unnamed"
+	}
+
+	var result []rune
+	for _, r := range name {
+		switch {
+		case r >= 0x20 && r < 0x7F:
+			// ASCII printable characters
+			if r == '"' || r == '\\' || r == '\n' || r == '\r' || r == '\t' {
+				// Skip or replace problematic characters
+				continue
+			}
+			result = append(result, r)
+		case r >= 0x00A0:
+			// Unicode characters (including CJK) - keep them
+			result = append(result, r)
+		default:
+			// Skip control characters
+			continue
+		}
+	}
+
+	sanitized := string(result)
+	if sanitized == "" {
+		return "unnamed"
+	}
+
+	// Trim spaces
+	sanitized = strings.TrimSpace(sanitized)
+	if sanitized == "" {
+		return "unnamed"
+	}
+
+	return sanitized
 }
 
 func defaultString(v, fallback string) string {
