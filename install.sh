@@ -1,6 +1,14 @@
 #!/bin/bash
 # clashctl + Mihomo 一键安装脚本
-# Usage: curl -sL https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh | sudo bash
+#
+# 安全安装方式（推荐）：
+#   curl -sLO https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh
+#   # 可选：校验脚本哈希
+#   chmod +x install.sh
+#   sudo ./install.sh
+#
+# 管道安装方式（便捷但有风险）：
+#   curl -sL https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh | sudo bash
 set -euo pipefail
 
 # ─── Config ───
@@ -71,6 +79,19 @@ done
 [ "$EUID" -eq 0 ] || die "请使用 sudo 运行: sudo bash $0"
 command -v curl &>/dev/null || die "需要 curl，请先安装"
 
+# Check for systemd (required for service management)
+check_systemd() {
+    if [ ! -d "/run/systemd/system" ]; then
+        warn "未检测到 systemd，将跳过服务集成"
+        warn "  仅安装二进制文件，需手动管理服务"
+        return 1
+    fi
+    return 0
+}
+
+HAS_SYSTEMD=true
+check_systemd || HAS_SYSTEMD=false
+
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 [ "$OS" = "Linux" ] || die "暂仅支持 Linux，当前: $OS"
@@ -81,6 +102,17 @@ case "$ARCH" in
     armv7l|armv6l)  GOARCH="armv7" ;;
     *)              die "不支持的架构: $ARCH" ;;
 esac
+
+# ─── URL validation ───
+validate_url() {
+    local url="$1"
+    # Only allow HTTPS URLs from known GitHub domains
+    if [[ "$url" =~ ^https://(github\.com|raw\.githubusercontent\.com|api\.github\.com)/ ]]; then
+        return 0
+    fi
+    warn "URL 来源非官方 GitHub 域名: $url"
+    return 1
+}
 
 # ─── SHA256 verification ───
 verify_checksum() {
@@ -132,6 +164,36 @@ fetch_asset_sha256() {
     fi
 }
 
+# ─── Rollback tracking ───
+ROLLBACK_FILES=()
+ROLLBACK_ACTIONS=()
+
+rollback_add_file() {
+    ROLLBACK_FILES+=("$1")
+}
+
+rollback_add_action() {
+    ROLLBACK_ACTIONS+=("$1")
+}
+
+do_rollback() {
+    if [ ${#ROLLBACK_FILES[@]} -eq 0 ] && [ ${#ROLLBACK_ACTIONS[@]} -eq 0 ]; then
+        return
+    fi
+    warn "执行回滚操作..."
+    # Remove installed files
+    for f in "${ROLLBACK_FILES[@]}"; do
+        if [ -f "$f" ]; then
+            rm -f "$f"
+            info "已删除: $f"
+        fi
+    done
+    # Execute rollback actions
+    for action in "${ROLLBACK_ACTIONS[@]}"; do
+        eval "$action" 2>/dev/null || true
+    done
+}
+
 # ─── Download to file with retry ───
 download_file() {
     local url="$1" output="$2"
@@ -160,6 +222,7 @@ install_clashctl() {
         mkdir -p "$INSTALL_DIR"
         cp ./clashctl-linux-amd64 "$INSTALL_DIR/clashctl"
         chmod +x "$INSTALL_DIR/clashctl"
+        rollback_add_file "$INSTALL_DIR/clashctl"
         ok "clashctl → $INSTALL_DIR/clashctl"
         return
     fi
@@ -184,23 +247,30 @@ install_clashctl() {
 
     info "下载 ${DIM}$CLASHCTL_VERSION${RESET}..."
     mkdir -p "$INSTALL_DIR"
-    download_file "$url" "$INSTALL_DIR/clashctl" || die "clashctl 下载失败: $url"
+    
+    # Create temp file for download, then move after verification
+    local tmpfile
+    tmpfile="$(mktemp)"
+    download_file "$url" "$tmpfile" || { rm -f "$tmpfile"; die "clashctl 下载失败: $url"; }
 
     # Verify SHA256 if available
     local expected_sha
     expected_sha="$(fetch_asset_sha256 "$CLASHCTL_REPO" "$CLASHCTL_VERSION" "clashctl-linux-${GOARCH}")"
     if [ "$expected_sha" = "ERROR" ]; then
+        rm -f "$tmpfile"
         die "下载校验和文件失败，无法验证二进制完整性"
     elif [ -n "$expected_sha" ]; then
-        if ! verify_checksum "$INSTALL_DIR/clashctl" "$expected_sha"; then
-            rm -f "$INSTALL_DIR/clashctl"
+        if ! verify_checksum "$tmpfile" "$expected_sha"; then
+            rm -f "$tmpfile"
             die "clashctl 下载校验失败，已删除损坏文件"
         fi
     else
         warn "跳过 SHA256 校验（未找到 checksums 文件）"
     fi
 
-    chmod +x "$INSTALL_DIR/clashctl"
+    chmod +x "$tmpfile"
+    mv "$tmpfile" "$INSTALL_DIR/clashctl"
+    rollback_add_file "$INSTALL_DIR/clashctl"
     ok "clashctl → $INSTALL_DIR/clashctl"
 }
 
@@ -258,15 +328,29 @@ install_mihomo() {
     mkdir -p "$INSTALL_DIR"
     info "下载 ${DIM}$(basename "$mihomo_url")${RESET}..."
 
+    # Download to temp file first for verification
+    local mihomo_tmpfile
+    mihomo_tmpfile="$(mktemp)"
+    
     if [[ "$mihomo_url" == *.gz ]]; then
-        local gzfile="$tmpfile.gz"
-        download_file "$mihomo_url" "$gzfile" || die "Mihomo 下载失败"
-        gzip -d -c "$gzfile" > "$INSTALL_DIR/mihomo" || die "解压失败"
+        local gzfile="$mihomo_tmpfile.gz"
+        download_file "$mihomo_url" "$gzfile" || { rm -f "$mihomo_tmpfile" "$gzfile"; die "Mihomo 下载失败"; }
+        gzip -d -c "$gzfile" > "$mihomo_tmpfile" || { rm -f "$mihomo_tmpfile" "$gzfile"; die "解压失败"; }
+        rm -f "$gzfile"
     else
-        download_file "$mihomo_url" "$INSTALL_DIR/mihomo" || die "Mihomo 下载失败"
+        download_file "$mihomo_url" "$mihomo_tmpfile" || { rm -f "$mihomo_tmpfile"; die "Mihomo 下载失败"; }
     fi
 
-    chmod +x "$INSTALL_DIR/mihomo"
+    # Verify binary works before installing
+    chmod +x "$mihomo_tmpfile"
+    if ! "$mihomo_tmpfile" -v >/dev/null 2>&1; then
+        rm -f "$mihomo_tmpfile"
+        die "下载的 Mihomo 二进制不可用"
+    fi
+
+    # Move to final location
+    mv "$mihomo_tmpfile" "$INSTALL_DIR/mihomo"
+    rollback_add_file "$INSTALL_DIR/mihomo"
     ok "mihomo → $INSTALL_DIR/mihomo ($MIHOMO_VERSION)"
 }
 
@@ -275,8 +359,20 @@ echo ""
 printf "  ${BOLD}📦 clashctl 安装程序${RESET}\n"
 printf "  ${DIM}架构: $OS/$GOARCH | 安装目录: $INSTALL_DIR${RESET}\n"
 
-$SKIP_CLASHCTL || install_clashctl
-$SKIP_MIHOMO   || install_mihomo
+# Install with error handling and rollback
+if ! $SKIP_CLASHCTL; then
+    if ! install_clashctl; then
+        do_rollback
+        die "clashctl 安装失败"
+    fi
+fi
+
+if ! $SKIP_MIHOMO; then
+    if ! install_mihomo; then
+        do_rollback
+        die "Mihomo 安装失败"
+    fi
+fi
 
 # ─── Done ───
 echo ""

@@ -185,6 +185,18 @@ func (m WizardModel) stepWritePlan(plan *subscription.ResolvedConfigPlan, path s
 		Detail:  fmt.Sprintf("%d bytes", len(yamlData)),
 	})
 
+	// Validate config using mihomo -t before writing
+	if err := mihomo.ValidateConfigContent(yamlData, m.appCfg.ConfigDir); err != nil {
+		*steps = append(*steps, ExecStep{
+			Label:   "校验配置",
+			Success: false,
+			Detail:  err.Error() + "\n配置可能有语法错误，但仍会尝试写入",
+		})
+		// Continue anyway - don't fail the whole process
+	} else {
+		*steps = append(*steps, ExecStep{Label: "校验配置", Success: true, Detail: "配置语法检查通过"})
+	}
+
 	backupPath, err := plan.Save(path)
 	if err != nil {
 		*steps = append(*steps, ExecStep{Label: "写入配置文件", Success: false, Detail: err.Error()})

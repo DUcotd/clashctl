@@ -48,5 +48,39 @@ func validateURL(rawURL string) error {
 	if u.Host == "" {
 		return fmt.Errorf("URL 缺少主机名")
 	}
+	// Block file:// protocol masquerading as host
+	if strings.Contains(u.Host, "://") {
+		return fmt.Errorf("URL 包含非法字符")
+	}
+	// Block local/private addresses to prevent SSRF (optional, commented out for now)
+	// This can be enabled for stricter security
+	// if isPrivateHost(u.Hostname()) {
+	//     return fmt.Errorf("不允许使用私有地址")
+	// }
 	return nil
 }
+
+// isPrivateHost checks if a hostname resolves to a private IP range.
+// This is disabled by default but can be enabled for SSRF protection.
+// func isPrivateHost(host string) bool {
+//     ip := net.ParseIP(host)
+//     if ip == nil {
+//         return false // DNS name, not IP
+//     }
+//     privateRanges := []string{
+//         "10.0.0.0/8",
+//         "172.16.0.0/12",
+//         "192.168.0.0/16",
+//         "127.0.0.0/8",
+//         "169.254.0.0/16",
+//         "::1/128",
+//         "fc00::/7",
+//     }
+//     for _, cidr := range privateRanges {
+//         _, network, _ := net.ParseCIDR(cidr)
+//         if network != nil && network.Contains(ip) {
+//             return true
+//         }
+//     }
+//     return false
+// }

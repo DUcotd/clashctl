@@ -63,6 +63,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("读取订阅文件失败: %w", err)
 	}
 
+	// Validate output path for security (only when not using --apply)
+	if !importApply && !importStart {
+		if err := system.ValidateOutputPath(importOutput); err != nil {
+			return fmt.Errorf("输出路径不安全: %w", err)
+		}
+	}
+
 	cfg := core.DefaultAppConfig()
 	if importApply || importStart {
 		loaded, err := loadAppConfig()

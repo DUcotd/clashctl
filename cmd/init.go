@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -26,9 +29,21 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Set up signal handling for cleanup
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
 	// Create and run the Bubble Tea wizard
 	wizard := ui.NewWizard(appCfg)
 	p := tea.NewProgram(wizard, tea.WithAltScreen())
+
+	// Handle signals in a goroutine
+	go func() {
+		<-sigCh
+		// Bubble Tea handles terminal cleanup, just exit gracefully
+		p.Quit()
+	}()
 
 	finalModel, err := p.Run()
 	if err != nil {

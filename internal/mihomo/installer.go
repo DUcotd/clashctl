@@ -26,6 +26,12 @@ const (
 	GitHubAPITimeout = 15 * time.Second
 )
 
+// GitHub mirror URLs for users in China
+var githubMirrors = []string{
+	"https://ghproxy.com/",
+	"https://mirror.ghproxy.com/",
+}
+
 // GitHubRelease represents a GitHub release (minimal fields).
 type MihomoRelease struct {
 	TagName string `json:"tag_name"`
@@ -41,6 +47,30 @@ type InstallResult struct {
 	Version    string
 	ReleaseTag string
 	Installed  bool
+}
+
+// GetGitHubMirrorURL returns a mirror URL if GitHub is not directly accessible.
+// Returns the original URL if no mirror is needed or available.
+func GetGitHubMirrorURL(originalURL string) string {
+	// Check if user has set a custom mirror
+	if customMirror := os.Getenv("CLASHCTL_GITHUB_MIRROR"); customMirror != "" {
+		mirror := strings.TrimRight(customMirror, "/")
+		if strings.HasPrefix(originalURL, "https://github.com/") {
+			return mirror + "/" + strings.TrimPrefix(originalURL, "https://")
+		}
+		if strings.HasPrefix(originalURL, "https://api.github.com/") {
+			return mirror + "/" + strings.TrimPrefix(originalURL, "https://")
+		}
+	}
+
+	// Try default mirrors if the original URL is not reachable
+	for _, mirror := range githubMirrors {
+		if strings.HasPrefix(originalURL, "https://github.com/") {
+			return mirror + strings.TrimPrefix(originalURL, "https://")
+		}
+	}
+
+	return originalURL
 }
 
 // EnsureMihomo checks if mihomo is available, and if not, downloads and installs it.
@@ -156,6 +186,13 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 
 	var release MihomoRelease
 	if err := system.FetchJSON(url, GitHubAPITimeout, &release); err != nil {
+		// Try mirror URL if original fails
+		mirrorURL := GetGitHubMirrorURL(url)
+		if mirrorURL != url {
+			if mirrorErr := system.FetchJSON(mirrorURL, GitHubAPITimeout, &release); mirrorErr == nil {
+				return &release, nil
+			}
+		}
 		return nil, fmt.Errorf("获取 GitHub Release 失败: %w", err)
 	}
 
@@ -224,11 +261,38 @@ func isPlatformMatch(name, goos, goarch string) bool {
 
 // downloadBinary downloads a file from url to destPath.
 func downloadBinary(url, destPath string) error {
-	return system.DownloadFile(url, destPath)
+	if err := system.DownloadFile(url, destPath); err != nil {
+		// Try mirror URL if original fails
+		mirrorURL := GetGitHubMirrorURL(url)
+		if mirrorURL != url {
+			if mirrorErr := system.DownloadFile(mirrorURL, destPath); mirrorErr == nil {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 // downloadAndDecompressGz downloads a gzip-compressed file and decompresses it to destPath.
 func downloadAndDecompressGz(url, destPath string) error {
+	// Try original URL first
+	err := downloadAndDecompressGzDirect(url, destPath)
+	if err != nil {
+		// Try mirror URL if original fails
+		mirrorURL := GetGitHubMirrorURL(url)
+		if mirrorURL != url {
+			if mirrorErr := downloadAndDecompressGzDirect(mirrorURL, destPath); mirrorErr == nil {
+				return nil
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+// downloadAndDecompressGzDirect performs the actual gzip download and decompression.
+func downloadAndDecompressGzDirect(url, destPath string) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err

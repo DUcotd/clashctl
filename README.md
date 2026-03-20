@@ -16,14 +16,20 @@ Mihomo 交互式 CLI 配置工具 — 输入订阅 URL，一键配置代理。
 ## 快速安装（推荐）
 
 ```bash
-# 一键安装 clashctl + Mihomo 内核
-curl -sL https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh | sudo bash
+# 下载安装脚本（推荐，支持校验）
+curl -sLO https://raw.githubusercontent.com/DUcotd/clashctl/main/install.sh
+# 可选：校验脚本完整性
+# sha256sum install.sh
+chmod +x install.sh
+sudo ./install.sh
 
 # 启动配置向导
 sudo clashctl init
 ```
 
 两步搞定，不需要手动下载 Mihomo。
+
+> ⚠️ 安全提示：避免使用 `curl ... | sudo bash` 管道方式，建议先下载脚本再执行。
 
 ### 手动安装
 

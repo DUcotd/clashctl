@@ -59,6 +59,62 @@ func GetBinaryVersion() (string, error) {
 	return version, nil
 }
 
+// ValidateConfig validates a Mihomo configuration file using `mihomo -t`.
+// Returns nil if the config is valid, or an error with details if invalid.
+func ValidateConfig(configPath string) error {
+	binary, err := FindBinary()
+	if err != nil {
+		return fmt.Errorf("找不到 mihomo 可执行文件: %w", err)
+	}
+
+	cmd := exec.Command(binary, "-t", "-d", configPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("配置校验失败: %s", msg)
+	}
+
+	return nil
+}
+
+// ValidateConfigContent validates Mihomo configuration content by writing it to a temp file.
+func ValidateConfigContent(content []byte, configDir string) error {
+	// Create a temp file for validation
+	tmpFile, err := os.CreateTemp("", "clashctl-validate-*.yaml")
+	if err != nil {
+		return fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(content); err != nil {
+		return fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	tmpFile.Close()
+
+	// Validate using mihomo -t
+	binary, err := FindBinary()
+	if err != nil {
+		// Skip validation if mihomo is not installed
+		return nil
+	}
+
+	cmd := exec.Command(binary, "-t", "-d", configDir, "-f", tmpFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("配置校验失败: %s", msg)
+	}
+
+	return nil
+}
+
 func validateBinary(path string) (string, error) {
 	version, err := runBinaryCheck(path, "-v")
 	if err == nil && version != "" {

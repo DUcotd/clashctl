@@ -11,6 +11,25 @@ OUT_DIR="$2"
 TIMEOUT="${3:-15}"
 USER_AGENT="${4:-clashctl/dev}"
 
+# Validate URL format (only allow http/https)
+case "$URL" in
+  http://*|https://*)
+    # OK
+    ;;
+  *)
+    printf '%s\n' "error: only http/https URLs are allowed" >&2
+    exit 1
+    ;;
+esac
+
+# Reject URLs with shell metacharacters
+case "$URL" in
+  *";"*|"|"*|"`"*|'$('*|'&&"*|'||'*)
+    printf '%s\n' "error: URL contains invalid characters" >&2
+    exit 1
+    ;;
+esac
+
 CONTENT_FILE="$OUT_DIR/subscription.txt"
 INFO_FILE="$OUT_DIR/subscription.info"
 
@@ -21,12 +40,13 @@ unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY no_proxy
 FETCHER=""
 if command -v curl >/dev/null 2>&1; then
   FETCHER="curl"
-  curl --noproxy '*' --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" -fsSL -A "$USER_AGENT" "$URL" -o "$CONTENT_FILE"
+  # Use -- to prevent URL from being interpreted as options
+  curl --noproxy '*' --connect-timeout "$TIMEOUT" --max-time "$TIMEOUT" -fsSL -A "$USER_AGENT" -- "$URL" -o "$CONTENT_FILE"
 elif command -v wget >/dev/null 2>&1; then
   FETCHER="wget"
-  wget --no-proxy -T "$TIMEOUT" -U "$USER_AGENT" -qO "$CONTENT_FILE" "$URL"
+  wget --no-proxy -T "$TIMEOUT" -U "$USER_AGENT" -qO "$CONTENT_FILE" -- "$URL"
 else
-  printf '%s\n' "curl 和 wget 都不可用" >&2
+  printf '%s\n' "curl and wget are not available" >&2
   exit 1
 fi
 

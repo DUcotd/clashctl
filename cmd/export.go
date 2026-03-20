@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/core"
+	"clashctl/internal/system"
 )
 
 var (
@@ -54,6 +55,11 @@ func runExport(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "❌ %s\n", e)
 		}
 		return fmt.Errorf("配置校验失败")
+	}
+
+	// Validate output path for security
+	if err := system.ValidateOutputPath(exportOutput); err != nil {
+		return fmt.Errorf("输出路径不安全: %w", err)
 	}
 
 	// Build mihomo config

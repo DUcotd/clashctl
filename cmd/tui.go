@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -40,8 +43,20 @@ func runTUINodes(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl service start' 或完成 'clashctl init'", err)
 	}
 
+	// Set up signal handling for cleanup
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
 	manager := ui.NewNodeManager(appCfg)
 	p := tea.NewProgram(manager, tea.WithAltScreen())
+
+	// Handle signals in a goroutine
+	go func() {
+		<-sigCh
+		// Bubble Tea handles terminal cleanup, just exit gracefully
+		p.Quit()
+	}()
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("节点管理界面运行出错: %w", err)

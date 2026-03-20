@@ -22,8 +22,35 @@ type PreparedSubscription struct {
 	FetchDetail string
 }
 
+// ValidateSubscriptionURL validates that a URL is safe for subscription fetching.
+func ValidateSubscriptionURL(rawURL string) error {
+	if rawURL == "" {
+		return fmt.Errorf("订阅 URL 不能为空")
+	}
+
+	// Must start with http:// or https://
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return fmt.Errorf("仅支持 http/https 协议的订阅 URL")
+	}
+
+	// Reject URLs with shell metacharacters
+	dangerousChars := []string{";", "|", "`", "$(", "&&", "||", "\n", "\r"}
+	for _, char := range dangerousChars {
+		if strings.Contains(rawURL, char) {
+			return fmt.Errorf("URL 包含非法字符: %s", char)
+		}
+	}
+
+	return nil
+}
+
 // PrepareSubscriptionURL downloads a subscription URL via the bundled shell helper.
 func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubscription, error) {
+	// Validate URL before passing to shell script
+	if err := ValidateSubscriptionURL(rawURL); err != nil {
+		return nil, err
+	}
+
 	workDir, err := os.MkdirTemp("", "clashctl-sub-*")
 	if err != nil {
 		return nil, fmt.Errorf("创建临时目录失败: %w", err)

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 var stopCmd = &cobra.Command{
@@ -20,6 +21,13 @@ func init() {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
+	// Check root for systemd operations
+	if mihomo.HasSystemd() {
+		if err := system.RequireRootForOperation("systemd 服务停止"); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println("🛑 正在停止 Mihomo...")
 	cfg, err := loadAppConfig()
 	if err != nil {

@@ -24,8 +24,9 @@ ExecStart={{.Binary}} -d {{.ConfigDir}}
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
-
-[Install]
+{{if .User}}User={{.User}}
+{{end}}{{if .Group}}Group={{.Group}}
+{{end}}[Install]
 WantedBy=multi-user.target
 `
 
@@ -34,6 +35,8 @@ type ServiceConfig struct {
 	Binary      string
 	ConfigDir   string
 	ServiceName string
+	User        string
+	Group       string
 }
 
 // GenerateServiceFile writes a systemd service file to the appropriate location.

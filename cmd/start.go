@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 var startCmd = &cobra.Command{
@@ -23,6 +24,13 @@ func init() {
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
+	// Check root for systemd operations
+	if mihomo.HasSystemd() {
+		if err := system.RequireRootForOperation("systemd 服务启动"); err != nil {
+			return err
+		}
+	}
+
 	fmt.Println("🚀 正在启动 Mihomo...")
 
 	cfg, err := loadAppConfig()

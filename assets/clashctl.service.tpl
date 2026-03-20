@@ -9,6 +9,7 @@ ExecStart={{.Binary}} -d {{.ConfigDir}}
 Restart=always
 RestartSec=3
 LimitNOFILE=65535
-
-[Install]
+{{if .User}}User={{.User}}
+{{end}}{{if .Group}}Group={{.Group}}
+{{end}}[Install]
 WantedBy=multi-user.target
