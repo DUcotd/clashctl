@@ -10,7 +10,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "clashctl",
 	Short: "Mihomo 交互式配置工具",
-	Long: `clashctl 是一个终端交互式工具，帮助你通过输入机场订阅 URL
+	Long: `clashctl 是一个终端交互式工具，帮助你通过输入订阅 URL
 快速完成 Mihomo 代理的配置生成、启动与管理。
 
 推荐主入口：
