@@ -66,8 +66,8 @@ func sanitizeForLog(input string) string {
 		regex *regexp.Regexp
 	}{
 		{regexp.MustCompile(`(?i)(password|passwd|pwd|token|secret|key|auth)[=:\s]+[^\s&;]+`)},
-		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`)},  // GitHub tokens
-		{regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._~+/=-]+`)},              // Bearer tokens
+		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`)}, // GitHub tokens
+		{regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._~+/=-]+`)},            // Bearer tokens
 	}
 
 	for _, p := range passwordPatterns {
