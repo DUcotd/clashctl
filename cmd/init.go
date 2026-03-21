@@ -51,7 +51,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if user quit without completing
-	if m, ok := finalModel.(ui.WizardModel); ok {
+	if m, ok := finalModel.(interface{ Completed() bool }); ok {
 		if !m.Completed() {
 			fmt.Println("已取消")
 		}

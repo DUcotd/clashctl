@@ -25,7 +25,6 @@ func TestScreenStepLabel(t *testing.T) {
 		{ScreenImportLocal, "步骤 6/8: 导入本地订阅"},
 		{ScreenGroupSelect, "步骤 7/8: 选择代理组"},
 		{ScreenNodeSelect, "步骤 8/8: 选择节点"},
-		{ScreenDone, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -135,9 +134,6 @@ func TestNewNodeManagerDefaults(t *testing.T) {
 	if manager.screen != ScreenGroupSelect {
 		t.Fatalf("screen = %v, want ScreenGroupSelect", manager.screen)
 	}
-	if !manager.standaloneNodes {
-		t.Fatal("standaloneNodes should be true")
-	}
 	if !manager.loading {
 		t.Fatal("loading should be true")
 	}
@@ -169,9 +165,16 @@ func TestWizardCompleted(t *testing.T) {
 		t.Error("new wizard should not be completed")
 	}
 
-	wizard.execSteps = []ExecStep{{Label: "test", Success: true}}
+	wizard.completed = true
 	if !wizard.Completed() {
-		t.Error("wizard with execSteps should be completed")
+		t.Error("wizard with completed flag should be completed")
+	}
+}
+
+func TestNodeManagerCompletedDefaultsFalse(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+	if manager.Completed() {
+		t.Fatal("standalone node manager should not mark setup completed")
 	}
 }
 
@@ -276,15 +279,10 @@ func TestSubscriptionTabCyclesSources(t *testing.T) {
 	}
 }
 
-func TestExecutionDoneMsgCarriesImportFallbackState(t *testing.T) {
+func TestSetupProgressDoneCarriesImportFallbackState(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 
-	updated, _ := wizard.Update(executionDoneMsg{
-		steps:           []ExecStep{{Label: "验证代理节点加载", Success: false, Detail: "provider 拉取失败"}},
-		controllerReady: false,
-		canImport:       true,
-		importHint:      "provider 拉取失败",
-	})
+	updated, _ := wizard.Update(setupProgressMsg{done: true, canImport: true, importHint: "provider 拉取失败"})
 
 	got := updated.(WizardModel)
 	if !got.canImportFallback {
@@ -292,6 +290,9 @@ func TestExecutionDoneMsgCarriesImportFallbackState(t *testing.T) {
 	}
 	if got.importHint != "provider 拉取失败" {
 		t.Fatalf("importHint = %q", got.importHint)
+	}
+	if !got.Completed() {
+		t.Fatal("wizard should be marked completed after done progress")
 	}
 }
 

@@ -146,7 +146,7 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	for _, name := range sortedProxyGroupNames(groups) {
 		group := groups[name]
 		typ := mihomo.NormalizeProxyType(group.Type)
-		typeIcon := groupTypeIcon(typ)
+		typeIcon := mihomo.GroupTypeIcon(typ)
 		fmt.Printf("  %s %s [%s]", typeIcon, name, typ)
 		if group.Now != "" {
 			fmt.Printf(" → %s", group.Now)
@@ -219,20 +219,5 @@ func printProxyGroupLatency(w io.Writer, detail *mihomo.ProxyGroupDetail) {
 			marker = "▸ "
 		}
 		fmt.Fprintf(w, "  %s%3d. %-40s %s\n", marker, i+1, node.Name, mihomo.FormatDelay(node.Delay))
-	}
-}
-
-func groupTypeIcon(t string) string {
-	switch mihomo.NormalizeProxyType(t) {
-	case "select":
-		return "🔀"
-	case "url-test":
-		return "⚡"
-	case "fallback":
-		return "🔄"
-	case "load-balance":
-		return "⚖️"
-	default:
-		return "📦"
 	}
 }

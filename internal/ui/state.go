@@ -1,7 +1,7 @@
-// Package ui defines the wizard state machine.
+// Package ui defines the wizard and node manager states.
 package ui
 
-// Screen represents a wizard page.
+// Screen represents a TUI page.
 type Screen int
 
 const (
@@ -10,12 +10,11 @@ const (
 	ScreenMode
 	ScreenAdvanced
 	ScreenPreview
-	ScreenExecution // 正在执行配置
+	ScreenExecution
 	ScreenResult
-	ScreenImportLocal // 本地订阅导入
-	ScreenGroupSelect // 选择代理组
-	ScreenNodeSelect  // 选择节点
-	ScreenDone
+	ScreenImportLocal
+	ScreenGroupSelect
+	ScreenNodeSelect
 )
 
 // StepLabel returns a human-readable step label.
@@ -79,20 +78,45 @@ type GroupItem struct {
 // NodeItem represents a proxy node in the TUI list.
 type NodeItem struct {
 	Name     string
-	Protocol string // Vless, Hysteria2, Trojan, etc.
-	Delay    int    // -1 = timeout, 0 = untested, >0 = delay in ms
+	Protocol string
+	Delay    int
 	Selected bool
 }
 
-// nodeTestedMsg is sent when a batch of node tests completes.
-type nodeTestedMsg struct {
-	delays map[int]int // index -> delay
-}
-
-// executionDoneMsg is sent when executeFull completes.
-type executionDoneMsg struct {
-	steps           []ExecStep
+// setupProgressMsg carries streaming setup progress.
+type setupProgressMsg struct {
+	currentStep     string
+	step            *ExecStep
+	done            bool
 	controllerReady bool
 	canImport       bool
 	importHint      string
+}
+
+// groupsLoadedMsg is sent when proxy groups load.
+type groupsLoadedMsg struct {
+	groups []GroupItem
+	err    string
+}
+
+// nodesLoadedMsg is sent when nodes for a group load.
+type nodesLoadedMsg struct {
+	nodes []NodeItem
+	err   string
+}
+
+// nodeSwitchedMsg is sent when a node switch finishes.
+type nodeSwitchedMsg struct {
+	success bool
+	err     string
+}
+
+// nodeTestProgressMsg carries streaming node latency results.
+type nodeTestProgressMsg struct {
+	index  int
+	delay  int
+	tested int
+	total  int
+	done   bool
+	err    string
 }

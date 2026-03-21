@@ -1,9 +1,8 @@
-// Package ui provides the main Bubble Tea wizard model.
+// Package ui provides the Bubble Tea setup wizard model.
 package ui
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -13,10 +12,40 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"clashctl/internal/core"
-	"clashctl/internal/mihomo"
 )
 
-// WizardModel is the main TUI state.
+type subscriptionState struct {
+	sourceMode      SubscriptionSource
+	urlInput        textinput.Model
+	fileInput       textinput.Model
+	inlineInput     textarea.Model
+	localImportPath string
+	inlineContent   string
+}
+
+type advancedState struct {
+	modeIndex      int
+	advancedIndex  int
+	advancedFields []string
+	advancedInputs []textinput.Model
+}
+
+type executionViewState struct {
+	execSteps         []ExecStep
+	currentStep       string
+	canImportFallback bool
+	importHint        string
+	importInput       textinput.Model
+	setupStream       <-chan setupProgressMsg
+}
+
+type viewportState struct {
+	vp            viewport.Model
+	vpReady       bool
+	screenOffsets map[Screen]int
+}
+
+// WizardModel is the setup TUI state.
 type WizardModel struct {
 	screen   Screen
 	appCfg   *core.AppConfig
@@ -25,55 +54,15 @@ type WizardModel struct {
 	quitting bool
 	title    string
 
-	// Subscription URL input
-	sourceMode  SubscriptionSource
-	urlInput    textinput.Model
-	fileInput   textinput.Model
-	inlineInput textarea.Model
-
-	// Mode selection
-	modeIndex int // 0 = TUN, 1 = mixed-port
-
-	// Advanced settings
-	advancedIndex  int
-	advancedFields []string
-	advancedInputs []textinput.Model
-
-	// Result
-	execSteps         []ExecStep
-	execError         string
-	canImportFallback bool
-	importHint        string
-	localImportPath   string
-	inlineContent     string
-	importInput       textinput.Model
-	loadError         string
-
-	// Controller availability (set after execution)
 	controllerAvailable bool
-	standaloneNodes     bool
-
-	// Node selection state
-	spinner       spinner.Model
-	groups        []GroupItem
-	groupIndex    int
-	nodes         []NodeItem
-	nodeIndex     int
-	selectedGroup string
-	loading       bool
-	loadingMsg    string
-	switchResult  string
-	switchSuccess bool
-
-	// Node testing state
-	testing   bool
-	testTotal int
-	testDone  int
-
-	// Viewport for scrollable lists
-	vp            viewport.Model
-	vpReady       bool
-	screenOffsets map[Screen]int
+	completed           bool
+	spinner             spinner.Model
+	setupService        SetupService
+	nodeService         NodeService
+	subscriptionState
+	advancedState
+	executionViewState
+	viewportState
 }
 
 // ExecStep represents a single execution step result.
@@ -83,27 +72,20 @@ type ExecStep struct {
 	Detail  string
 }
 
-// --- Async messages ---
-
-type groupsLoadedMsg struct {
-	groups []GroupItem
-	err    string
-}
-
-type nodesLoadedMsg struct {
-	nodes []NodeItem
-	err   string
-}
-
-type nodeSwitchedMsg struct {
-	success bool
-	err     string
-}
-
-// NewWizard creates a new WizardModel with defaults or persisted values.
+// NewWizard creates a new setup wizard with defaults or persisted values.
 func NewWizard(appCfg *core.AppConfig) WizardModel {
+	return newWizardWithServices(appCfg, newDefaultSetupService(), newDefaultNodeService())
+}
+
+func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSvc NodeService) WizardModel {
 	if appCfg == nil {
 		appCfg = core.DefaultAppConfig()
+	}
+	if setupSvc == nil {
+		setupSvc = newDefaultSetupService()
+	}
+	if nodeSvc == nil {
+		nodeSvc = newDefaultNodeService()
 	}
 
 	modeIndex := 1
@@ -111,11 +93,7 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 		modeIndex = 0
 	}
 
-	// URL input
 	urlInput := textinput.New()
-	// bubbles/textinput v0.18.0 can panic when Width is set and the placeholder
-	// contains wide runes because it slices by display width instead of rune count.
-	// Keep placeholders ASCII-only until that upstream behavior is fixed.
 	urlInput.Placeholder = "https://example.com/sub or /path/to/sub.txt"
 	urlInput.SetValue(appCfg.SubscriptionURL)
 	urlInput.Focus()
@@ -140,7 +118,6 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	inlineInput.CharLimit = 0
 	inlineInput.MaxHeight = 12
 
-	// Advanced fields
 	fields := []string{
 		"配置目录",
 		"控制器地址",
@@ -176,7 +153,6 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 		advInputs[i] = ti
 	}
 
-	// Spinner
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = SpinnerStyle
@@ -189,38 +165,33 @@ func NewWizard(appCfg *core.AppConfig) WizardModel {
 	importInput.TextStyle = InputStyle
 
 	return WizardModel{
-		screen:         ScreenWelcome,
-		appCfg:         appCfg,
-		title:          "🧙 clashctl 配置向导",
-		sourceMode:     SubscriptionSourceURL,
-		modeIndex:      modeIndex,
-		urlInput:       urlInput,
-		fileInput:      fileInput,
-		inlineInput:    inlineInput,
-		advancedFields: fields,
-		advancedInputs: advInputs,
-		spinner:        s,
-		importInput:    importInput,
-		screenOffsets:  make(map[Screen]int),
+		screen:       ScreenWelcome,
+		appCfg:       appCfg,
+		title:        "🧙 clashctl 配置向导",
+		spinner:      s,
+		setupService: setupSvc,
+		nodeService:  nodeSvc,
+		subscriptionState: subscriptionState{
+			sourceMode:  SubscriptionSourceURL,
+			urlInput:    urlInput,
+			fileInput:   fileInput,
+			inlineInput: inlineInput,
+		},
+		advancedState: advancedState{
+			modeIndex:      modeIndex,
+			advancedFields: fields,
+			advancedInputs: advInputs,
+		},
+		executionViewState: executionViewState{
+			importInput: importInput,
+		},
+		viewportState: viewportState{
+			screenOffsets: make(map[Screen]int),
+		},
 	}
-}
-
-// NewNodeManager creates a standalone node-management TUI starting from group selection.
-func NewNodeManager(appCfg *core.AppConfig) WizardModel {
-	m := NewWizard(appCfg)
-	m.screen = ScreenGroupSelect
-	m.title = "📡 clashctl 节点管理"
-	m.controllerAvailable = true
-	m.standaloneNodes = true
-	m.loading = true
-	m.loadingMsg = "正在加载代理组..."
-	return m
 }
 
 func (m WizardModel) Init() tea.Cmd {
-	if m.standaloneNodes && m.screen == ScreenGroupSelect && m.loading {
-		return tea.Batch(m.spinner.Tick, m.loadGroups())
-	}
 	return textinput.Blink
 }
 
@@ -234,7 +205,6 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ensureViewport()
 		return m, nil
 	case tea.MouseMsg:
-		// Forward mouse events (scroll wheel) to viewport
 		if m.usesViewport() {
 			var cmd tea.Cmd
 			m.vp, cmd = m.vp.Update(msg)
@@ -246,27 +216,13 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case executionDoneMsg:
-		m.execSteps = msg.steps
-		m.controllerAvailable = msg.controllerReady
-		m.canImportFallback = msg.canImport
-		m.importHint = msg.importHint
-		m.setScreen(ScreenResult)
-		return m, nil
-	case groupsLoadedMsg:
-		return m.handleGroupsLoaded(msg)
-	case nodesLoadedMsg:
-		return m.handleNodesLoaded(msg)
-	case nodeSwitchedMsg:
-		return m.handleNodeSwitched(msg)
-	case nodeTestedMsg:
-		return m.handleNodeTested(msg)
+	case setupProgressMsg:
+		return m.handleSetupProgress(msg)
 	}
 	return m, nil
 }
 
 func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Global quit
 	if msg.String() == "ctrl+c" {
 		m.quitting = true
 		return m, tea.Quit
@@ -284,18 +240,14 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ScreenPreview:
 		return m.updatePreview(msg)
 	case ScreenExecution:
-		// Block all keys during execution — just wait
 		return m, nil
 	case ScreenResult:
 		return m.updateResult(msg)
 	case ScreenImportLocal:
 		return m.updateImportLocal(msg)
-	case ScreenGroupSelect:
-		return m.updateGroupSelect(msg)
-	case ScreenNodeSelect:
-		return m.updateNodeSelect(msg)
+	default:
+		return m, nil
 	}
-	return m, nil
 }
 
 func (m *WizardModel) ensureViewport() {
@@ -323,7 +275,7 @@ func (m *WizardModel) setScreen(screen Screen) {
 
 func (m WizardModel) usesViewport() bool {
 	switch m.screen {
-	case ScreenWelcome, ScreenMode, ScreenPreview, ScreenResult, ScreenGroupSelect, ScreenNodeSelect:
+	case ScreenWelcome, ScreenMode, ScreenPreview, ScreenExecution, ScreenResult:
 		return true
 	default:
 		return false
@@ -553,13 +505,24 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		m.setScreen(ScreenExecution)
+		m.completed = false
+		m.execSteps = nil
+		m.currentStep = ""
+		m.canImportFallback = false
+		m.importHint = ""
 		if strings.TrimSpace(m.localImportPath) != "" {
-			return m, tea.Batch(m.spinner.Tick, m.runImportExecution(m.localImportPath))
+			stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), m.localImportPath)
+			m.setupStream = stream
+			return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 		}
 		if strings.TrimSpace(m.inlineContent) != "" {
-			return m, tea.Batch(m.spinner.Tick, m.runInlineExecution(m.inlineContent))
+			stream := m.setupService.StartInline(cloneAppConfig(m.appCfg), m.inlineContent)
+			m.setupStream = stream
+			return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 		}
-		return m, tea.Batch(m.spinner.Tick, m.runExecution())
+		stream := m.setupService.StartRemote(cloneAppConfig(m.appCfg))
+		m.setupStream = stream
+		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 	case "esc":
 		m.setScreen(ScreenAdvanced)
 		return m, nil
@@ -567,53 +530,38 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runExecution runs executeFull as an async background command.
-func (m WizardModel) runExecution() tea.Cmd {
+func waitForSetupProgress(stream <-chan setupProgressMsg) tea.Cmd {
 	return func() tea.Msg {
-		steps := m.executeFull()
-		canImport, importHint := detectImportFallback(steps)
-		return executionDoneMsg{
-			steps:           steps,
-			controllerReady: m.controllerAvailable,
-			canImport:       canImport,
-			importHint:      importHint,
+		msg, ok := <-stream
+		if !ok {
+			return setupProgressMsg{done: true}
 		}
+		return msg
 	}
 }
 
-func (m WizardModel) runImportExecution(filePath string) tea.Cmd {
-	return func() tea.Msg {
-		steps := m.executeImport(filePath)
-		canImport, importHint := detectImportFallback(steps)
-		return executionDoneMsg{
-			steps:           steps,
-			controllerReady: m.controllerAvailable,
-			canImport:       canImport,
-			importHint:      importHint,
-		}
+func (m WizardModel) handleSetupProgress(msg setupProgressMsg) (tea.Model, tea.Cmd) {
+	if msg.currentStep != "" {
+		m.currentStep = msg.currentStep
 	}
-}
-
-func (m WizardModel) runInlineExecution(content string) tea.Cmd {
-	return func() tea.Msg {
-		steps := m.executeInlineContent(content)
-		canImport, importHint := detectImportFallback(steps)
-		return executionDoneMsg{
-			steps:           steps,
-			controllerReady: m.controllerAvailable,
-			canImport:       canImport,
-			importHint:      importHint,
-		}
+	if msg.step != nil {
+		m.execSteps = append(m.execSteps, *msg.step)
+		m.currentStep = ""
 	}
-}
-
-func detectImportFallback(steps []ExecStep) (bool, string) {
-	for _, step := range steps {
-		if step.Label == "验证代理节点加载" && !step.Success {
-			return true, step.Detail
-		}
+	if msg.done {
+		m.setupStream = nil
+		m.currentStep = ""
+		m.controllerAvailable = msg.controllerReady
+		m.canImportFallback = msg.canImport
+		m.importHint = msg.importHint
+		m.completed = true
+		m.setScreen(ScreenResult)
+		return m, nil
 	}
-	return false, ""
+	if m.setupStream != nil {
+		return m, waitForSetupProgress(m.setupStream)
+	}
+	return m, nil
 }
 
 func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -621,14 +569,15 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
 		m.scrollViewport(msg.String())
 		return m, nil
-	case "enter", "q":
+	case "enter", "q", "n":
 		if m.controllerAvailable {
-			// Go to node selection instead of quitting
-			m.loading = true
-			m.loadingMsg = "正在加载代理组..."
-			m.loadError = ""
-			m.setScreen(ScreenGroupSelect)
-			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
+			manager := newNodeManagerWithService(cloneAppConfig(m.appCfg), m.nodeService, true)
+			manager.width = m.width
+			manager.height = m.height
+			if manager.width > 0 && manager.height > 0 {
+				manager.ensureViewport()
+			}
+			return manager, tea.Batch(manager.spinner.Tick, manager.loadGroups())
 		}
 		m.quitting = true
 		return m, tea.Quit
@@ -641,14 +590,6 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.quitting = true
 		return m, tea.Quit
-	case "n":
-		if m.controllerAvailable {
-			m.loading = true
-			m.loadingMsg = "正在加载代理组..."
-			m.loadError = ""
-			m.setScreen(ScreenGroupSelect)
-			return m, tea.Batch(m.spinner.Tick, m.loadGroups())
-		}
 	}
 	return m, nil
 }
@@ -682,8 +623,13 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setScreen(ScreenExecution)
+		m.completed = false
+		m.execSteps = nil
+		m.currentStep = ""
 		m.importInput.Blur()
-		return m, tea.Batch(m.spinner.Tick, m.runImportExecution(path))
+		stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), path)
+		m.setupStream = stream
+		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 	case "esc":
 		m.importInput.Blur()
 		m.setScreen(ScreenResult)
@@ -695,265 +641,6 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m WizardModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.loading {
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "up", "k":
-		if m.groupIndex > 0 {
-			m.groupIndex--
-		}
-	case "down", "j":
-		if m.groupIndex < len(m.groups)-1 {
-			m.groupIndex++
-		}
-	case "pgup":
-		m.groupIndex -= m.vp.Height
-		if m.groupIndex < 0 {
-			m.groupIndex = 0
-		}
-	case "pgdown":
-		m.groupIndex += m.vp.Height
-		if m.groupIndex >= len(m.groups) {
-			m.groupIndex = len(m.groups) - 1
-		}
-	case "home":
-		m.groupIndex = 0
-	case "end":
-		m.groupIndex = len(m.groups) - 1
-	case "enter":
-		if len(m.groups) > 0 {
-			m.selectedGroup = m.groups[m.groupIndex].Name
-			m.loading = true
-			m.loadingMsg = "正在加载节点..."
-			m.loadError = ""
-			m.nodeIndex = 0
-			return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
-		}
-	case "r":
-		// Refresh groups
-		m.loading = true
-		m.loadingMsg = "正在刷新代理组..."
-		m.loadError = ""
-		return m, tea.Batch(m.spinner.Tick, m.loadGroups())
-	case "esc":
-		m.quitting = true
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-func (m WizardModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.loading || m.testing {
-		return m, nil
-	}
-
-	switch msg.String() {
-	case "up", "k":
-		if m.nodeIndex > 0 {
-			m.nodeIndex--
-		}
-	case "down", "j":
-		if m.nodeIndex < len(m.nodes)-1 {
-			m.nodeIndex++
-		}
-	case "pgup":
-		m.nodeIndex -= m.vp.Height
-		if m.nodeIndex < 0 {
-			m.nodeIndex = 0
-		}
-	case "pgdown":
-		m.nodeIndex += m.vp.Height
-		if m.nodeIndex >= len(m.nodes) {
-			m.nodeIndex = len(m.nodes) - 1
-		}
-	case "home":
-		m.nodeIndex = 0
-	case "end":
-		m.nodeIndex = len(m.nodes) - 1
-	case "enter":
-		if len(m.nodes) > 0 {
-			nodeName := m.nodes[m.nodeIndex].Name
-			m.loading = true
-			m.loadingMsg = "正在切换节点..."
-			return m, tea.Batch(m.spinner.Tick, m.switchNode(m.selectedGroup, nodeName))
-		}
-	case "t":
-		// Test all nodes
-		if len(m.nodes) > 0 {
-			m.testing = true
-			m.testTotal = len(m.nodes)
-			m.testDone = 0
-			m.switchResult = ""
-			return m, tea.Batch(m.spinner.Tick, m.testAllNodes())
-		}
-	case "r":
-		// Refresh nodes
-		m.loading = true
-		m.loadingMsg = "正在刷新节点..."
-		m.loadError = ""
-		return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
-	case "esc":
-		// Back to group list
-		m.setScreen(ScreenGroupSelect)
-		m.switchResult = ""
-		return m, nil
-	}
-	return m, nil
-}
-
-// --- Async commands ---
-
-func (m WizardModel) loadGroups() tea.Cmd {
-	return func() tea.Msg {
-		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-		groups, err := client.GetAllProxyGroups()
-		if err != nil {
-			return groupsLoadedMsg{err: err.Error()}
-		}
-
-		items := make([]GroupItem, 0, len(groups))
-		for name, g := range groups {
-			items = append(items, GroupItem{
-				Name:      name,
-				Type:      g.Type,
-				Now:       g.Now,
-				NodeCount: len(g.All),
-			})
-		}
-		sort.Slice(items, func(i, j int) bool {
-			return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
-		})
-
-		return groupsLoadedMsg{groups: items}
-	}
-}
-
-func (m WizardModel) loadNodes(groupName string) tea.Cmd {
-	return func() tea.Msg {
-		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-		detail, err := client.GetProxyGroupDetail(groupName)
-		if err != nil {
-			return nodesLoadedMsg{err: err.Error()}
-		}
-
-		// Fetch all proxies to get protocol types (optional, best-effort)
-		typeMap := make(map[string]string)
-		if allProxies, err := client.GetAllProxies(); err == nil {
-			for name, info := range allProxies {
-				typeMap[name] = info.Type
-			}
-		}
-
-		items := make([]NodeItem, 0, len(detail.All))
-		for _, name := range detail.All {
-			node := NodeItem{
-				Name:     name,
-				Protocol: typeMap[name],
-				Selected: name == detail.Now,
-			}
-			items = append(items, node)
-		}
-
-		return nodesLoadedMsg{nodes: items}
-	}
-}
-
-func (m WizardModel) switchNode(groupName, nodeName string) tea.Cmd {
-	return func() tea.Msg {
-		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-		err := client.SwitchProxy(groupName, nodeName)
-		if err != nil {
-			return nodeSwitchedMsg{success: false, err: err.Error()}
-		}
-		return nodeSwitchedMsg{success: true}
-	}
-}
-
-func (m WizardModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, tea.Cmd) {
-	m.loading = false
-	if msg.err != "" {
-		m.loadError = "加载代理组失败: " + msg.err
-		return m, nil
-	}
-	m.loadError = ""
-	m.groups = msg.groups
-	m.groupIndex = 0
-	return m, nil
-}
-
-func (m WizardModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.Cmd) {
-	m.loading = false
-	if msg.err != "" {
-		m.loadError = "加载节点失败: " + msg.err
-		return m, nil
-	}
-	m.loadError = ""
-	m.nodes = msg.nodes
-	m.nodeIndex = 0
-	// Move to the currently selected node
-	for i, n := range m.nodes {
-		if n.Selected {
-			m.nodeIndex = i
-			break
-		}
-	}
-	m.setScreen(ScreenNodeSelect)
-	return m, nil
-}
-
-func (m WizardModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd) {
-	m.loading = false
-	m.switchSuccess = msg.success
-	if msg.success {
-		m.loadError = ""
-		m.switchResult = "✅ 节点切换成功！"
-		// Update the selected state in node list
-		for i := range m.nodes {
-			m.nodes[i].Selected = (i == m.nodeIndex)
-		}
-	} else {
-		m.switchResult = "❌ 切换失败: " + msg.err
-	}
-	return m, nil
-}
-
-func (m WizardModel) handleNodeTested(msg nodeTestedMsg) (tea.Model, tea.Cmd) {
-	for idx, delay := range msg.delays {
-		if idx < len(m.nodes) {
-			m.nodes[idx].Delay = delay
-		}
-	}
-	m.testing = false
-	m.loadError = ""
-	m.switchResult = fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", len(msg.delays))
-	return m, nil
-}
-
-// testAllNodes tests latency for all nodes with bounded concurrency.
-func (m WizardModel) testAllNodes() tea.Cmd {
-	return func() tea.Msg {
-		client := mihomo.NewClient("http://" + m.appCfg.ControllerAddr)
-		delays := make(map[int]int)
-		detail, err := client.TestProxyGroupNodes(m.selectedGroup, 10)
-		if err != nil {
-			return nodeTestedMsg{delays: delays}
-		}
-		for _, tested := range detail.Nodes {
-			for i, node := range m.nodes {
-				if node.Name == tested.Name {
-					delays[i] = tested.Delay
-					break
-				}
-			}
-		}
-
-		return nodeTestedMsg{delays: delays}
-	}
-}
-
 // View renders the current screen.
 func (m WizardModel) View() string {
 	if m.quitting {
@@ -961,13 +648,10 @@ func (m WizardModel) View() string {
 	}
 
 	var b strings.Builder
-
-	// Title
 	b.WriteString(TitleStyle.Render(m.title))
 	b.WriteString("\n")
 
-	// Step indicator (except welcome)
-	if m.screen != ScreenWelcome && !m.standaloneNodes {
+	if m.screen != ScreenWelcome {
 		b.WriteString(StepStyle.Render(m.screen.StepLabel()))
 		b.WriteString("\n\n")
 	}
@@ -989,16 +673,12 @@ func (m WizardModel) View() string {
 		b.WriteString(m.viewResult())
 	case ScreenImportLocal:
 		b.WriteString(m.viewImportLocal())
-	case ScreenGroupSelect:
-		b.WriteString(m.viewGroupSelect())
-	case ScreenNodeSelect:
-		b.WriteString(m.viewNodeSelect())
 	}
 
 	return b.String()
 }
 
-// Completed returns true if the wizard finished all steps.
+// Completed returns true if the setup flow finished.
 func (m WizardModel) Completed() bool {
-	return len(m.execSteps) > 0
+	return m.completed
 }

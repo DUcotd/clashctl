@@ -39,9 +39,12 @@ clashctl/
 │   │   ├── privilege.go    # 权限检查
 │   │   └── network.go      # 网络工具
 │   └── ui/                 # Bubble Tea TUI
-│       ├── wizard.go       # 主模型
-│       ├── screens.go      # 页面渲染
-│       ├── executor.go     # 执行管线
+│       ├── wizard.go       # init 向导模型
+│       ├── screens.go      # 向导页面渲染
+│       ├── node_manager.go # 节点管理模型
+│       ├── node_screens.go # 节点管理页面渲染
+│       ├── setup_service.go # 配置/启动流式执行服务
+│       ├── node_service.go # 节点管理与测速服务适配层
 │       ├── styles.go       # lipgloss 样式
 │       └── state.go        # 状态定义
 ├── assets/
