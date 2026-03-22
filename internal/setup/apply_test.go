@@ -17,7 +17,7 @@ func TestApplyResolvedPlanSavesConfigAndAppConfig(t *testing.T) {
 	cfg := core.DefaultAppConfig()
 	cfg.ConfigDir = configDir
 	plan := &subscription.ResolvedConfigPlan{
-		Kind: subscription.PlanKindStatic,
+		Kind:    subscription.PlanKindStatic,
 		RawYAML: []byte("mixed-port: 7890\nmode: rule\nproxies: []\nproxy-groups: []\nrules: []\n"),
 	}
 

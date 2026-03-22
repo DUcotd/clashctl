@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	configShowJSON bool
-	configPathJSON bool
+	configShowJSON  bool
+	configPathJSON  bool
 	exportSubURL    string
 	exportMode      string
 	exportMixedPort int

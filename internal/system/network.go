@@ -137,15 +137,15 @@ func ProxyEnvForDisplay() []string {
 // StripProxyEnv removes proxy-related variables from an environment list.
 func StripProxyEnv(env []string) []string {
 	blocked := map[string]struct{}{
-		"http_proxy":  {},
-		"https_proxy": {},
-		"all_proxy":   {},
-		"HTTP_PROXY":  {},
-		"HTTPS_PROXY": {},
-		"ALL_PROXY":   {},
+		"http_proxy":         {},
+		"https_proxy":        {},
+		"all_proxy":          {},
+		"HTTP_PROXY":         {},
+		"HTTPS_PROXY":        {},
+		"ALL_PROXY":          {},
 		"NODE_USE_ENV_PROXY": {},
-		"no_proxy":    {},
-		"NO_PROXY":    {},
+		"no_proxy":           {},
+		"NO_PROXY":           {},
 	}
 	out := make([]string, 0, len(env))
 	for _, entry := range env {
