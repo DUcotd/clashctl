@@ -1,21 +1,19 @@
 package system
 
 import (
-	_ "embed"
+	"context"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"clashctl/internal/core"
 	"clashctl/internal/netsec"
 )
-
-//go:embed scripts/prepare-subscription.sh
-var prepareSubscriptionScript string
 
 const MaxPreparedSubscriptionBytes = 20 * 1024 * 1024
 
@@ -46,7 +44,9 @@ func ValidateSubscriptionURL(rawURL string) error {
 		return fmt.Errorf("仅支持 http/https 协议的订阅 URL")
 	}
 
-	// Reject URLs with shell metacharacters
+	// Keep rejecting obviously dangerous shell metacharacters even though the
+	// downloader no longer shells out; this avoids surprising behavior if the URL
+	// is surfaced elsewhere.
 	dangerousChars := []string{";", "|", "`", "$(", "&&", "||", "\n", "\r"}
 	for _, char := range dangerousChars {
 		if strings.Contains(rawURL, char) {
@@ -54,16 +54,14 @@ func ValidateSubscriptionURL(rawURL string) error {
 		}
 	}
 
-	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: false})
+	return err
 }
 
-// PrepareSubscriptionURL downloads a subscription URL via the bundled shell helper.
+// PrepareSubscriptionURL downloads a subscription URL using a direct Go HTTP
+// client. The client validates each dial target at connect time so redirects
+// and late DNS changes cannot silently pivot to local/private addresses.
 func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubscription, error) {
-	// Validate URL before passing to shell script
 	if err := ValidateSubscriptionURL(rawURL); err != nil {
 		return nil, err
 	}
@@ -79,58 +77,153 @@ func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubs
 		}
 	}()
 
-	scriptPath := filepath.Join(workDir, "prepare-subscription.sh")
-	if err := os.WriteFile(scriptPath, []byte(prepareSubscriptionScript), 0700); err != nil {
-		return nil, fmt.Errorf("写入订阅脚本失败: %w", err)
-	}
-
 	outDir := filepath.Join(workDir, "output")
-	cmd := exec.Command(
-		"/bin/sh",
-		scriptPath,
-		rawURL,
-		outDir,
-		fmt.Sprintf("%d", int(timeout.Seconds())),
-		"clashctl/"+core.AppVersion,
-		strconv.FormatInt(MaxPreparedSubscriptionBytes, 10),
-	)
-	cmd.Env = StripProxyEnv(os.Environ())
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(output))
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("订阅脚本执行失败: %s", msg)
+	if err := EnsureDir(outDir); err != nil {
+		return nil, fmt.Errorf("创建订阅输出目录失败: %w", err)
 	}
 
-	contentPath := strings.TrimSpace(string(output))
-	if contentPath == "" {
-		contentPath = filepath.Join(outDir, "subscription.txt")
-	}
-	contentPath, err = ensurePathWithinBase(outDir, contentPath)
+	body, fetchDetail, err := fetchPreparedSubscription(rawURL, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("订阅脚本输出路径不安全: %w", err)
+		return nil, err
 	}
-	body, err := readPreparedSubscriptionBody(contentPath)
+
+	contentPath, err := ensurePathWithinBase(outDir, filepath.Join(outDir, "subscription.txt"))
 	if err != nil {
-		return nil, fmt.Errorf("读取订阅内容失败: %w", err)
+		return nil, fmt.Errorf("订阅内容路径不安全: %w", err)
 	}
+	if err := WriteFileAtomic(contentPath, body, 0600); err != nil {
+		return nil, fmt.Errorf("写入订阅内容失败: %w", err)
+	}
+
 	infoPath, err := ensurePathWithinBase(outDir, filepath.Join(outDir, "subscription.info"))
 	if err != nil {
 		return nil, fmt.Errorf("订阅信息路径不安全: %w", err)
 	}
-	infoData, _ := os.ReadFile(infoPath)
+	if err := WriteFileAtomic(infoPath, []byte(fetchDetail+"\n"), 0600); err != nil {
+		return nil, fmt.Errorf("写入订阅信息失败: %w", err)
+	}
 
 	prepared := &PreparedSubscription{
 		Body:        body,
 		ContentPath: contentPath,
 		InfoPath:    infoPath,
-		FetchDetail: strings.TrimSpace(string(infoData)),
+		FetchDetail: fetchDetail,
 		TempDir:     workDir,
 	}
 	cleanupOnError = false
 	return prepared, nil
+}
+
+func fetchPreparedSubscription(rawURL string, timeout time.Duration) ([]byte, string, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("构建订阅请求失败: %w", err)
+	}
+	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+
+	resp, err := newPreparedSubscriptionHTTPClient(timeout).Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("下载订阅失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		preview, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg := strings.TrimSpace(string(preview))
+		if msg == "" {
+			msg = http.StatusText(resp.StatusCode)
+		}
+		return nil, "", fmt.Errorf("下载订阅失败: HTTP %d: %s", resp.StatusCode, msg)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxPreparedSubscriptionBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("读取订阅响应失败: %w", err)
+	}
+	if int64(len(body)) > MaxPreparedSubscriptionBytes {
+		return nil, "", fmt.Errorf("订阅内容过大: %d bytes (最大允许 %d bytes)", len(body), MaxPreparedSubscriptionBytes)
+	}
+
+	finalURL := rawURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
+	}
+	fetchDetail := strings.Join([]string{
+		fmt.Sprintf("url=%s", rawURL),
+		fmt.Sprintf("final_url=%s", finalURL),
+		"fetcher=go-http",
+		fmt.Sprintf("status=%d", resp.StatusCode),
+		fmt.Sprintf("bytes=%d", len(body)),
+	}, "\n")
+	return body, fetchDetail, nil
+}
+
+func newPreparedSubscriptionHTTPClient(timeout time.Duration) *http.Client {
+	timeout = resolvePreparedSubscriptionTimeout(timeout)
+	dialer := &net.Dialer{
+		Timeout:   ConnectTimeout,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		ForceAttemptHTTP2:     true,
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          20,
+		MaxIdleConnsPerHost:   10,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialPreparedSubscription(ctx, dialer, network, addr, timeout)
+		},
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= MaxRedirects {
+				return fmt.Errorf("重定向次数过多 (超过 %d 次)，可能存在重定向循环", MaxRedirects)
+			}
+			return nil
+		},
+	}
+}
+
+func dialPreparedSubscription(ctx context.Context, dialer *net.Dialer, network, addr string, timeout time.Duration) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := netsec.ResolveRemoteHost(host, netsec.URLValidationOptions{ResolveHost: true, Timeout: timeout})
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil || len(resolved.Addrs) == 0 {
+		return nil, fmt.Errorf("无法解析主机 %s", host)
+	}
+
+	var lastErr error
+	for _, addr := range resolved.Addrs {
+		ip := strings.TrimSpace(addr.IP.String())
+		if ip == "" {
+			continue
+		}
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("无法连接主机 %s", host)
+}
+
+func resolvePreparedSubscriptionTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return DefaultTimeout
+	}
+	return timeout
 }
 
 func readPreparedSubscriptionBody(path string) ([]byte, error) {

@@ -65,3 +65,38 @@ func TestValidateRemoteHTTPURLRejectsResolutionFailuresWhenRequested(t *testing.
 		t.Fatal("ValidateRemoteHTTPURL() should reject resolution failures")
 	}
 }
+
+func TestResolveRemoteHostReturnsResolvedAddrs(t *testing.T) {
+	prev := lookupIPAddr
+	lookupIPAddr = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("93.184.216.34")}}, nil
+	}
+	defer func() {
+		lookupIPAddr = prev
+	}()
+
+	resolved, err := ResolveRemoteHost("example.com", URLValidationOptions{ResolveHost: true})
+	if err != nil {
+		t.Fatalf("ResolveRemoteHost() error = %v", err)
+	}
+	if resolved == nil || len(resolved.Addrs) != 1 {
+		t.Fatalf("resolved = %#v, want 1 addr", resolved)
+	}
+	if got := resolved.Addrs[0].IP.String(); got != "93.184.216.34" {
+		t.Fatalf("resolved ip = %q, want 93.184.216.34", got)
+	}
+}
+
+func TestResolveRemoteHostRejectsPrivateResolution(t *testing.T) {
+	prev := lookupIPAddr
+	lookupIPAddr = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+	}
+	defer func() {
+		lookupIPAddr = prev
+	}()
+
+	if _, err := ResolveRemoteHost("example.com", URLValidationOptions{ResolveHost: true}); err == nil {
+		t.Fatal("ResolveRemoteHost() should reject private resolution")
+	}
+}

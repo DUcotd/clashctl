@@ -20,6 +20,11 @@ type URLValidationOptions struct {
 	Timeout     time.Duration
 }
 
+type ResolvedHost struct {
+	Host  string
+	Addrs []net.IPAddr
+}
+
 // AllowLocalSubscriptionTargets returns whether local/private subscription targets are allowed.
 func AllowLocalSubscriptionTargets() bool {
 	value := strings.TrimSpace(strings.ToLower(os.Getenv(localSubscriptionOverrideEnv)))
@@ -51,14 +56,33 @@ func ValidateRemoteHTTPURL(rawURL string, opts URLValidationOptions) (*url.URL, 
 		return nil, fmt.Errorf("URL 包含非法字符")
 	}
 
-	if opts.AllowLocal || AllowLocalSubscriptionTargets() {
-		return u, nil
+	if _, err := ResolveRemoteHost(u.Hostname(), opts); err != nil {
+		return nil, err
 	}
+	return u, nil
+}
 
-	host := strings.TrimSpace(strings.ToLower(u.Hostname()))
+// ResolveRemoteHost validates a target host and optionally resolves it to safe IPs.
+func ResolveRemoteHost(host string, opts URLValidationOptions) (*ResolvedHost, error) {
+	host = strings.TrimSpace(strings.ToLower(host))
 	if host == "" {
 		return nil, fmt.Errorf("URL 缺少主机名")
 	}
+
+	if opts.AllowLocal || AllowLocalSubscriptionTargets() {
+		if ip := net.ParseIP(host); ip != nil {
+			return &ResolvedHost{Host: host, Addrs: []net.IPAddr{{IP: ip}}}, nil
+		}
+		if !opts.ResolveHost {
+			return &ResolvedHost{Host: host}, nil
+		}
+		addrs, err := lookupResolvedHost(host, opts.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("无法解析主机 %s: %w", host, err)
+		}
+		return &ResolvedHost{Host: host, Addrs: addrs}, nil
+	}
+
 	if isLocalHostname(host) {
 		return nil, fmt.Errorf("不允许使用本地或内网地址: %s", host)
 	}
@@ -66,20 +90,13 @@ func ValidateRemoteHTTPURL(rawURL string, opts URLValidationOptions) (*url.URL, 
 		if isPrivateIP(ip) {
 			return nil, fmt.Errorf("不允许使用本地或内网地址: %s", host)
 		}
-		return u, nil
+		return &ResolvedHost{Host: host, Addrs: []net.IPAddr{{IP: ip}}}, nil
 	}
-
 	if !opts.ResolveHost {
-		return u, nil
+		return &ResolvedHost{Host: host}, nil
 	}
 
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = 3 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	addrs, err := lookupIPAddr(ctx, host)
+	addrs, err := lookupResolvedHost(host, opts.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("无法安全解析主机 %s: %w", host, err)
 	}
@@ -88,8 +105,24 @@ func ValidateRemoteHTTPURL(rawURL string, opts URLValidationOptions) (*url.URL, 
 			return nil, fmt.Errorf("不允许使用本地或内网地址: %s", host)
 		}
 	}
+	return &ResolvedHost{Host: host, Addrs: addrs}, nil
+}
 
-	return u, nil
+func lookupResolvedHost(host string, timeout time.Duration) ([]net.IPAddr, error) {
+	if host == "" {
+		return nil, fmt.Errorf("host 不能为空")
+	}
+	timeout = resolveTimeout(timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return lookupIPAddr(ctx, host)
+}
+
+func resolveTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return 3 * time.Second
+	}
+	return timeout
 }
 
 func isLocalHostname(host string) bool {
