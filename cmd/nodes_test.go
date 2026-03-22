@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"clashctl/internal/mihomo"
+	nodeops "clashctl/internal/nodes"
 )
 
 func TestSortedProxyGroupNames(t *testing.T) {
@@ -78,11 +79,14 @@ func TestBuildNodesTestReportJSONIncludesNodes(t *testing.T) {
 }
 
 func TestBuildNodesListReport(t *testing.T) {
-	report := buildNodesListReport(&mihomo.ProxyGroupDetail{
-		Name: "PROXY",
-		Type: "Selector",
-		Now:  "Node A",
-		All:  []string{"Node A", "Node B"},
+	report := buildNodesListReport(&nodeops.GroupDetail{
+		Name:    "PROXY",
+		Type:    "Selector",
+		Current: "Node A",
+		Nodes: []nodeops.NodeEntry{
+			{Name: "Node A", Selected: true},
+			{Name: "Node B", Selected: false},
+		},
 	})
 
 	if report.Group != "PROXY" || report.Type != "select" || report.Count != 2 {
@@ -94,9 +98,9 @@ func TestBuildNodesListReport(t *testing.T) {
 }
 
 func TestBuildNodesGroupsReportSorted(t *testing.T) {
-	report := buildNodesGroupsReport(map[string]mihomo.ProxyGroup{
-		"PROXY": {Name: "PROXY", Type: "Selector", Now: "Node A", All: []string{"Node A", "Node B"}},
-		"Auto":  {Name: "Auto", Type: "url-test", All: []string{"Node C"}},
+	report := buildNodesGroupsReport([]nodeops.GroupSummary{
+		{Name: "Auto", Type: "url-test", NodeCount: 1},
+		{Name: "PROXY", Type: "Selector", Current: "Node A", NodeCount: 2},
 	})
 
 	if len(report.Groups) != 2 {
