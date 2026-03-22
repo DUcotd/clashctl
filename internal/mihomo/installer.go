@@ -22,6 +22,8 @@ const (
 	MihomoGitHubRepo = "mihomo"
 	// GitHubAPITimeout is the timeout for GitHub API requests.
 	GitHubAPITimeout = 15 * time.Second
+	// MaxDecompressedBinaryBytes bounds gzip expansion when unpacking release assets.
+	MaxDecompressedBinaryBytes = 200 * 1024 * 1024
 )
 
 // GitHub mirror URLs for users in China
@@ -247,6 +249,9 @@ func findReleaseChecksumAsset(release *MihomoRelease, assetName string) (system.
 // downloadBinary downloads a verified file to destPath.
 func downloadBinary(asset, checksumAsset system.NamedDownload, destPath string) error {
 	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
+		if !system.AllowUntrustedMirrorDownloads() {
+			return err
+		}
 		mirrorAsset := asset
 		mirrorAsset.URL = GetGitHubMirrorURL(asset.URL)
 		mirrorChecksum := checksumAsset
@@ -268,6 +273,13 @@ func downloadAndDecompressGz(asset, checksumAsset system.NamedDownload, destPath
 	if err := downloadBinary(asset, checksumAsset, gzPath); err != nil {
 		return err
 	}
+	return decompressGzipFileLimited(gzPath, destPath, MaxDecompressedBinaryBytes)
+}
+
+func decompressGzipFileLimited(gzPath, destPath string, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return fmt.Errorf("无效的解压大小上限: %d", maxBytes)
+	}
 
 	in, err := os.Open(gzPath)
 	if err != nil {
@@ -287,6 +299,12 @@ func downloadAndDecompressGz(asset, checksumAsset system.NamedDownload, destPath
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, gzReader)
-	return err
+	written, err := io.Copy(out, io.LimitReader(gzReader, maxBytes+1))
+	if err != nil {
+		return err
+	}
+	if written > maxBytes {
+		return fmt.Errorf("解压后的文件超过大小上限: %d bytes (最大允许 %d bytes)", written, maxBytes)
+	}
+	return nil
 }

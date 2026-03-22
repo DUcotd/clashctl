@@ -1,6 +1,11 @@
 package releases
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"clashctl/internal/system"
@@ -55,5 +60,93 @@ func TestNamedDownloads(t *testing.T) {
 	want := []system.NamedDownload{{Name: "clashctl-linux-amd64", URL: "https://example.com/a"}}
 	if len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("NamedDownloads() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDownloadVerifiedGitHubAssetDoesNotUseMirrorByDefault(t *testing.T) {
+	t.Setenv("CLASHCTL_ALLOW_UNTRUSTED_MIRROR", "")
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/checksums.txt":
+			_, _ = fmt.Fprintln(w, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  clashctl-linux-amd64")
+		case "/clashctl-linux-amd64":
+			http.Error(w, "upstream down", http.StatusBadGateway)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer origin.Close()
+
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/checksums.txt":
+			_, _ = fmt.Fprintln(w, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  clashctl-linux-amd64")
+		case "/clashctl-linux-amd64":
+			_, _ = w.Write([]byte("hello"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mirror.Close()
+
+	dest := filepath.Join(t.TempDir(), "clashctl-linux-amd64")
+	err := DownloadVerifiedGitHubAsset(
+		system.NamedDownload{Name: "clashctl-linux-amd64", URL: origin.URL + "/clashctl-linux-amd64"},
+		system.NamedDownload{Name: "checksums.txt", URL: origin.URL + "/checksums.txt"},
+		func(raw string) string { return mirror.URL + "/" + filepath.Base(raw) },
+		dest,
+	)
+	if err == nil {
+		t.Fatal("DownloadVerifiedGitHubAsset() should fail when origin download fails and mirror fallback is disabled")
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("dest file should not exist, stat err = %v", statErr)
+	}
+}
+
+func TestDownloadVerifiedGitHubAssetAllowsMirrorWithExplicitOptIn(t *testing.T) {
+	t.Setenv("CLASHCTL_ALLOW_UNTRUSTED_MIRROR", "1")
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/checksums.txt":
+			_, _ = fmt.Fprintln(w, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  clashctl-linux-amd64")
+		case "/clashctl-linux-amd64":
+			http.Error(w, "upstream down", http.StatusBadGateway)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer origin.Close()
+
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/checksums.txt":
+			_, _ = fmt.Fprintln(w, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  clashctl-linux-amd64")
+		case "/clashctl-linux-amd64":
+			_, _ = w.Write([]byte("hello"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mirror.Close()
+
+	dest := filepath.Join(t.TempDir(), "clashctl-linux-amd64")
+	err := DownloadVerifiedGitHubAsset(
+		system.NamedDownload{Name: "clashctl-linux-amd64", URL: origin.URL + "/clashctl-linux-amd64"},
+		system.NamedDownload{Name: "checksums.txt", URL: origin.URL + "/checksums.txt"},
+		func(raw string) string { return mirror.URL + "/" + filepath.Base(raw) },
+		dest,
+	)
+	if err != nil {
+		t.Fatalf("DownloadVerifiedGitHubAsset() error = %v", err)
+	}
+	data, readErr := os.ReadFile(dest)
+	if readErr != nil {
+		t.Fatalf("ReadFile(dest) error = %v", readErr)
+	}
+	if string(data) != "hello" {
+		t.Fatalf("dest content = %q, want hello", string(data))
 	}
 }

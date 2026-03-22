@@ -2,6 +2,7 @@ package mihomo
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"net/http"
 	"os"
@@ -489,6 +490,36 @@ func TestSystemdQuoteEscapesArguments(t *testing.T) {
 	got := systemdQuote(`/tmp/mihomo "config"`)
 	if got != `"/tmp/mihomo \"config\""` {
 		t.Fatalf("systemdQuote() = %q", got)
+	}
+}
+
+func TestDecompressGzipFileLimitedRejectsOversizedOutput(t *testing.T) {
+	tmp := t.TempDir()
+	gzPath := filepath.Join(tmp, "mihomo.gz")
+	destPath := filepath.Join(tmp, "mihomo")
+
+	f, err := os.Create(gzPath)
+	if err != nil {
+		t.Fatalf("Create(gz) error: %v", err)
+	}
+	gz := gzip.NewWriter(f)
+	payload := bytes.Repeat([]byte("a"), 2048)
+	if _, err := gz.Write(payload); err != nil {
+		t.Fatalf("gz.Write() error = %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gz.Close() error = %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("file.Close() error = %v", err)
+	}
+
+	err = decompressGzipFileLimited(gzPath, destPath, 1024)
+	if err == nil {
+		t.Fatal("decompressGzipFileLimited() should fail when decompressed output exceeds limit")
+	}
+	if !strings.Contains(err.Error(), "超过大小上限") {
+		t.Fatalf("decompressGzipFileLimited() error = %v", err)
 	}
 }
 

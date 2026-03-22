@@ -108,11 +108,18 @@ func PrepareSubscriptionURL(rawURL string, timeout time.Duration) (*PreparedSubs
 	if contentPath == "" {
 		contentPath = filepath.Join(outDir, "subscription.txt")
 	}
+	contentPath, err = ensurePathWithinBase(outDir, contentPath)
+	if err != nil {
+		return nil, fmt.Errorf("订阅脚本输出路径不安全: %w", err)
+	}
 	body, err := readPreparedSubscriptionBody(contentPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取订阅内容失败: %w", err)
 	}
-	infoPath := filepath.Join(outDir, "subscription.info")
+	infoPath, err := ensurePathWithinBase(outDir, filepath.Join(outDir, "subscription.info"))
+	if err != nil {
+		return nil, fmt.Errorf("订阅信息路径不安全: %w", err)
+	}
 	infoData, _ := os.ReadFile(infoPath)
 
 	prepared := &PreparedSubscription{
@@ -135,4 +142,23 @@ func readPreparedSubscriptionBody(path string) ([]byte, error) {
 		return nil, fmt.Errorf("订阅内容过大: %d bytes (最大允许 %d bytes)", info.Size(), MaxPreparedSubscriptionBytes)
 	}
 	return os.ReadFile(path)
+}
+
+func ensurePathWithinBase(baseDir, path string) (string, error) {
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", err
+	}
+	pathAbs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(baseAbs, pathAbs)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", fmt.Errorf("路径超出允许目录: %s", path)
+	}
+	return pathAbs, nil
 }

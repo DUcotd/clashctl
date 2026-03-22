@@ -34,3 +34,24 @@ func TestPreparedSubscriptionCleanupRemovesTempDir(t *testing.T) {
 		t.Fatalf("TempDir should be removed, stat err = %v", err)
 	}
 }
+
+func TestEnsurePathWithinBase(t *testing.T) {
+	base := t.TempDir()
+	inside := filepath.Join(base, "output", "subscription.txt")
+	if err := os.MkdirAll(filepath.Dir(inside), 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	got, err := ensurePathWithinBase(base, inside)
+	if err != nil {
+		t.Fatalf("ensurePathWithinBase(inside) error = %v", err)
+	}
+	if got != inside {
+		t.Fatalf("ensurePathWithinBase(inside) = %q, want %q", got, inside)
+	}
+
+	outside := filepath.Join(base, "..", "outside.txt")
+	if _, err := ensurePathWithinBase(base, outside); err == nil {
+		t.Fatal("ensurePathWithinBase(outside) should fail")
+	}
+}
