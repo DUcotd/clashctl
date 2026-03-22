@@ -40,17 +40,17 @@ func (m WizardModel) viewSubscription() string {
 	case SubscriptionSourceURL:
 		content += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
 		content += m.urlInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 返回")
+		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 退出")
 	case SubscriptionSourceInline:
 		content += InfoStyle.Render("可直接粘贴 Base64、原始节点链接列表或 Mihomo/Clash YAML") + "\n"
 		content += InfoStyle.Render("多行内容请在这里完整粘贴；使用 Ctrl+S 继续下一步") + "\n\n"
 		content += m.inlineInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Ctrl+S 下一步 │ Esc 返回")
+		content += HelpStyle.Render("←/→ 切换来源 │ Ctrl+S 下一步 │ Esc 退出")
 	case SubscriptionSourceFile:
 		content += InfoStyle.Render("适合服务器无法直连订阅时使用本地文件导入") + "\n"
 		content += InfoStyle.Render("支持 Base64 原始订阅、解码后的节点链接列表或 YAML 文件") + "\n\n"
 		content += m.fileInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 返回")
+		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 退出")
 	}
 
 	return BoxStyle.Render(content)
@@ -77,11 +77,12 @@ func (m WizardModel) viewMode() string {
 		lines = append(lines, "", WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用"))
 	}
 
-	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ PgUp/PgDn 滚动 │ Enter 确认 │ Esc 返回")
+	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ Enter 快速继续 │ a 高级设置 │ Esc 返回")
 }
 
 func (m WizardModel) viewAdvanced() string {
-	content := HeaderStyle.Render("高级设置（可直接按 Enter 使用默认值）") + "\n\n"
+	content := HeaderStyle.Render("高级设置（可选）") + "\n"
+	content += InfoStyle.Render("普通场景保持默认即可；修改后按 Enter 返回预览并开始确认") + "\n\n"
 
 	for i, field := range m.advancedFields {
 		val := m.advancedInputs[i].Value()
@@ -92,7 +93,7 @@ func (m WizardModel) viewAdvanced() string {
 		}
 	}
 
-	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 确认 │ Esc 返回")
+	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 保存并返回 │ Esc 放弃修改")
 
 	return BoxStyle.Render(content)
 }
@@ -115,7 +116,7 @@ func (m WizardModel) viewPreview() string {
 		"",
 		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
 	}
-	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 确认并开始配置 │ Esc 返回修改")
+	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 开始配置 │ a 高级设置 │ Esc 返回模式选择")
 }
 
 func renderSourceSelector(current SubscriptionSource) string {

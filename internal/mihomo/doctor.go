@@ -297,7 +297,7 @@ func checkProxyInventory(controllerAddr string) CheckResult {
 			Name:    "代理节点加载",
 			Passed:  false,
 			Problem: fmt.Sprintf("PROXY 组未加载真实节点，当前候选: %v", inv.Candidates),
-			Suggest: "服务器可能无法直连订阅 URL；可先在本地下载订阅，再执行 'clashctl advanced import --file sub.txt --apply --start'",
+			Suggest: "服务器可能无法直连订阅 URL；可先在本地下载订阅，再执行 'clashctl config import --file sub.txt --apply --start'",
 		}
 	}
 	detail := fmt.Sprintf("PROXY 已加载 %d 个节点", inv.Loaded)

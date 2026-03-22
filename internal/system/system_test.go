@@ -188,6 +188,7 @@ func TestStripProxyEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"http_proxy=http://127.0.0.1:7890",
 		"HTTPS_PROXY=http://127.0.0.1:7890",
+		"NODE_USE_ENV_PROXY=1",
 		"NO_PROXY=localhost",
 		"HOME=/root",
 	}
@@ -208,11 +209,13 @@ func TestProxyEnvForDisplay(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:7890")
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
 	t.Setenv("ALL_PROXY", "")
+	t.Setenv("NODE_USE_ENV_PROXY", "1")
 
 	got := ProxyEnvForDisplay()
 	want := []string{
 		"HTTP_PROXY=http://127.0.0.1:7890",
 		"HTTPS_PROXY=http://127.0.0.1:7890",
+		"NODE_USE_ENV_PROXY=1",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ProxyEnvForDisplay() = %#v, want %#v", got, want)
@@ -242,6 +245,9 @@ func TestPersistShellProxyEnv(t *testing.T) {
 		t.Fatalf("ReadFile(script) error: %v", err)
 	}
 	if !strings.Contains(string(script), `export HTTP_PROXY="http://127.0.0.1:7890"`) {
+		t.Fatalf("script content = %s", string(script))
+	}
+	if !strings.Contains(string(script), "export NODE_USE_ENV_PROXY=1") {
 		t.Fatalf("script content = %s", string(script))
 	}
 

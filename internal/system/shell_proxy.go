@@ -84,6 +84,7 @@ func buildProxyScript(port int) string {
 		fmt.Sprintf("export HTTP_PROXY=%q", httpProxy),
 		fmt.Sprintf("export HTTPS_PROXY=%q", httpProxy),
 		fmt.Sprintf("export ALL_PROXY=%q", allProxy),
+		"export NODE_USE_ENV_PROXY=1",
 		"export http_proxy=\"$HTTP_PROXY\"",
 		"export https_proxy=\"$HTTPS_PROXY\"",
 		"export all_proxy=\"$ALL_PROXY\"",

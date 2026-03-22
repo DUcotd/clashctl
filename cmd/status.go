@@ -73,19 +73,6 @@ type statusReport struct {
 	Warnings       []string                 `json:"warnings,omitempty"`
 }
 
-var statusCmd = &cobra.Command{
-	Use:    "status",
-	Short:  "查看 Mihomo 运行状态",
-	Long:   `显示 Mihomo 服务状态、配置路径、controller 连接情况和当前代理组信息。`,
-	Hidden: true,
-	RunE:   legacyRunner("clashctl status", "clashctl service status", runStatus),
-}
-
-func init() {
-	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "以 JSON 输出状态信息")
-	rootCmd.AddCommand(statusCmd)
-}
-
 func runStatus(cmd *cobra.Command, args []string) error {
 	cfg, err := loadAppConfig()
 	if err != nil {
@@ -203,7 +190,7 @@ func buildStatusReport(cfg *core.AppConfig, proxyEnv []string, serviceActive boo
 			OnlyCompatible: inventory.OnlyCompatible,
 		}
 		if inventory.OnlyCompatible {
-			report.Warnings = append(report.Warnings, "订阅节点未成功加载；当前仅剩 COMPATIBLE，可改用 clashctl advanced import 生成静态配置")
+			report.Warnings = append(report.Warnings, "订阅节点未成功加载；当前仅剩 COMPATIBLE，可改用 clashctl config import 生成静态配置")
 		}
 	}
 	return report
@@ -274,7 +261,7 @@ func printStatusReport(w io.Writer, report *statusReport) error {
 	if report.Inventory != nil && report.Inventory.OnlyCompatible {
 		fmt.Fprintln(w, "\n  ⚠ 订阅节点未成功加载；当前仅剩 COMPATIBLE。")
 		fmt.Fprintln(w, "    常见原因: 服务器无法直连订阅 URL，或 provider 拉取失败。")
-		fmt.Fprintln(w, "    可改用 'clashctl advanced import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
+		fmt.Fprintln(w, "    可改用 'clashctl config import --file sub.txt -o /etc/mihomo/config.yaml' 生成静态配置。")
 	}
 	if report.InventoryError != "" {
 		fmt.Fprintf(w, "\n  订阅节点检查: ⚠ %s\n", report.InventoryError)
@@ -308,6 +295,6 @@ func proxyStatusLines(cfg *core.AppConfig, proxyEnv []string) []string {
 
 	return []string{
 		"Shell 代理: ⚠ 未设置",
-		fmt.Sprintf("  当前为 mixed-port 模式；像 codex/opencode 这类 CLI 需要显式导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 指向 127.0.0.1:%d", cfg.MixedPort),
+		fmt.Sprintf("  当前为 mixed-port 模式；像 codex/opencode/Node.js 这类 CLI 需要显式导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY，并为 Node.js 额外设置 NODE_USE_ENV_PROXY=1（代理地址 127.0.0.1:%d）", cfg.MixedPort),
 	}
 }

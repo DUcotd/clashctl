@@ -23,23 +23,23 @@ func (s Screen) StepLabel() string {
 	case ScreenWelcome:
 		return "欢迎"
 	case ScreenSubscription:
-		return "步骤 1/8: 选择订阅来源"
+		return "步骤 1/7: 选择订阅来源"
 	case ScreenMode:
-		return "步骤 2/8: 选择运行模式"
+		return "步骤 2/7: 选择运行模式"
 	case ScreenAdvanced:
-		return "步骤 3/8: 高级设置"
+		return "可选设置: 高级参数"
 	case ScreenPreview:
-		return "步骤 4/8: 配置预览"
+		return "步骤 3/7: 配置预览"
 	case ScreenExecution:
-		return "步骤 5/8: 正在配置..."
+		return "步骤 4/7: 正在配置..."
 	case ScreenResult:
-		return "步骤 6/8: 执行结果"
+		return "步骤 5/7: 执行结果"
 	case ScreenImportLocal:
-		return "步骤 6/8: 导入本地订阅"
+		return "步骤 5/7: 导入本地订阅"
 	case ScreenGroupSelect:
-		return "步骤 7/8: 选择代理组"
+		return "步骤 6/7: 选择代理组"
 	case ScreenNodeSelect:
-		return "步骤 8/8: 选择节点"
+		return "步骤 7/7: 选择节点"
 	default:
 		return ""
 	}

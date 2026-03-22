@@ -25,34 +25,34 @@ sudo clashctl init
 
 默认只需要输入订阅 URL 或本地订阅文件路径。`init` 会优先把订阅转成更适合服务器使用的静态配置，尽量减少 provider 拉取失败带来的问题。
 
-如果选择 `mixed-port` 模式，向导会在完成后自动把 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 写入当前用户的 shell 配置文件；新开终端自动生效，当前终端执行一次 `source ~/.bashrc`（或对应 shell 配置文件）即可。
+如果选择 `mixed-port` 模式，向导会在完成后自动把 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 以及 `NODE_USE_ENV_PROXY=1` 写入当前用户的 shell 配置文件；新开终端自动生效，当前终端执行一次 `source ~/.bashrc`（或对应 shell 配置文件）即可。
 
-### clashctl advanced install
+### clashctl service install
 安装 Mihomo 内核。
 
 ```bash
-sudo clashctl advanced install --json
+sudo clashctl service install --json
 ```
 
-### clashctl advanced export
+### clashctl config export
 导出 Mihomo 配置文件。
 
 ```bash
-clashctl advanced export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路径]
-clashctl advanced export -u <订阅URL> -o config.yaml --json
+clashctl config export -u <订阅URL> [-m tun|mixed] [-p 端口] [-o 输出路径]
+clashctl config export -u <订阅URL> -o config.yaml --json
 ```
 
-### clashctl advanced import
+### clashctl config import
 从本地原始订阅文件生成静态 Mihomo 配置，适用于服务器无法直接拉取订阅 URL 的场景。
 
 ```bash
-clashctl advanced import -f sub.txt -o config.yaml
-clashctl advanced import -f sub.txt -o config.yaml --json
-clashctl advanced import -f sub.txt --apply --start
-cat sub.txt | clashctl advanced import -f - --apply --start
+clashctl config import -f sub.txt -o config.yaml
+clashctl config import -f sub.txt -o config.yaml --json
+clashctl config import -f sub.txt --apply --start
+cat sub.txt | clashctl config import -f - --apply --start
 ```
 
-### clashctl service start / stop / restart
+### clashctl service install / start / stop / restart
 管理 Mihomo 服务。
 
 ### clashctl service status
@@ -100,7 +100,7 @@ clashctl nodes groups               # 列出所有代理组
 clashctl nodes groups --json        # 输出代理组 JSON
 ```
 
-### clashctl backup / restore
+### clashctl backup / backup restore
 备份和恢复当前配置。
 
 ```bash
@@ -108,20 +108,20 @@ clashctl backup
 clashctl backup --json
 clashctl backup list
 clashctl backup list --json
-clashctl restore               # 列出可恢复备份
-clashctl restore --json        # 以 JSON 列出可恢复备份
-clashctl restore config-xxxx.yaml
-clashctl restore config-xxxx.yaml --json
+clashctl backup restore               # 列出可恢复备份
+clashctl backup restore --json        # 以 JSON 列出可恢复备份
+clashctl backup restore config-xxxx.yaml
+clashctl backup restore config-xxxx.yaml --json
 ```
 
-### clashctl advanced config
+### clashctl config show / path
 配置查看。
 
 ```bash
-clashctl advanced config show    # 显示配置内容
-clashctl advanced config path    # 显示配置路径
-clashctl advanced config show --json
-clashctl advanced config path --json
+clashctl config show    # 显示配置内容
+clashctl config path    # 显示配置路径
+clashctl config show --json
+clashctl config path --json
 ```
 
 ## 配置文件
@@ -137,7 +137,7 @@ clashctl advanced config path --json
 ## 常见问题
 
 ### 未找到 mihomo
-运行 `sudo clashctl advanced install`，或直接执行 `sudo clashctl init` 让工具自动下载安装。
+运行 `sudo clashctl service install`，或直接执行 `sudo clashctl init` 让工具自动下载安装。
 
 ### TUN 模式需要 root
 使用 `sudo clashctl init` 或 `sudo clashctl service start`。
@@ -155,6 +155,6 @@ clashctl advanced config path --json
 
 ```bash
 base64 -d sub.txt > links.txt   # 如果文件是 base64
-clashctl advanced import -f links.txt -o config.yaml
-clashctl advanced import -f links.txt --apply --start
+clashctl config import -f links.txt -o config.yaml
+clashctl config import -f links.txt --apply --start
 ```

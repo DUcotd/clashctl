@@ -52,7 +52,7 @@ func printRuntimeStartResult(w io.Writer, result *mihomo.StartResult) {
 
 	if result.Inventory != nil && result.Inventory.OnlyCompatible {
 		fmt.Fprintln(w, "⚠️  Controller API 已启动，但订阅节点未成功加载；当前仅剩 COMPATIBLE")
-		fmt.Fprintln(w, "   建议: 在本地下载订阅后执行 'clashctl advanced import --file sub.txt --apply --start'")
+		fmt.Fprintln(w, "   建议: 在本地下载订阅后执行 'clashctl config import --file sub.txt --apply --start'")
 	} else if result.Inventory != nil {
 		fmt.Fprintf(w, "✅ PROXY 已加载 %d 个节点\n", result.Inventory.Loaded)
 		if result.Inventory.Current != "" {

@@ -8,15 +8,15 @@ clashctl/
 ├── cmd/                    # Cobra 命令定义
 │   ├── root.go
 │   ├── init.go             # TUI 向导
-│   ├── export.go           # 配置导出
-│   ├── start.go / stop.go / restart.go
-│   ├── status.go
-│   ├── doctor.go
-│   ├── nodes.go
+│   ├── service.go          # 安装/启动/停止/重启/状态
+│   ├── config.go           # 导入/导出/查看配置
+│   ├── nodes.go            # 节点管理
+│   ├── doctor.go           # 环境诊断
 │   ├── backup.go           # 备份/恢复命令
+│   ├── compat.go           # 兼容旧命令入口
 │   ├── update.go           # 自更新逻辑（含 self 兼容别名）
 │   ├── output*.go          # 统一文本/JSON 输出辅助
-│   └── config.go
+│   └── legacy.go           # 迁移提示辅助
 ├── internal/
 │   ├── app/                # 应用初始化
 │   │   └── bootstrap.go
@@ -36,7 +36,9 @@ clashctl/
 │   │   ├── process.go      # 进程管理
 │   │   ├── service.go      # systemd 服务
 │   │   └── doctor.go       # 环境诊断
+│   ├── nodes/              # nodes CLI / TUI 共用操作
 │   ├── releases/           # GitHub Release 获取与下载回退
+│   ├── setup/              # init / import 共用落地流程
 │   ├── system/             # 系统工具
 │   │   ├── fs.go           # 文件系统操作
 │   │   ├── exec.go         # 命令执行

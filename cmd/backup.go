@@ -67,7 +67,7 @@ var backupCmd = &cobra.Command{
 	RunE:  runBackup,
 }
 
-var restoreCmd = &cobra.Command{
+var backupRestoreCmd = &cobra.Command{
 	Use:   "restore [version]",
 	Short: "恢复历史配置",
 	Long:  `从备份中恢复配置文件。不指定版本则列出可用备份。`,
@@ -83,10 +83,10 @@ var backupListCmd = &cobra.Command{
 
 func init() {
 	backupCmd.PersistentFlags().BoolVar(&backupJSON, "json", false, "以 JSON 输出备份结果")
-	restoreCmd.Flags().BoolVar(&restoreJSON, "json", false, "以 JSON 输出恢复结果")
+	backupRestoreCmd.Flags().BoolVar(&restoreJSON, "json", false, "以 JSON 输出恢复结果")
 	backupCmd.AddCommand(backupListCmd)
+	backupCmd.AddCommand(backupRestoreCmd)
 	rootCmd.AddCommand(backupCmd)
-	rootCmd.AddCommand(restoreCmd)
 }
 
 // BackupDir returns the backup directory path.
@@ -263,7 +263,7 @@ func printBackupList(report *backupListReport) {
 		fmt.Printf("  %-40s  %s  %s\n", entry.Name, entry.ModifiedAt.Format("2006-01-02 15:04:05"), entry.SizeHuman)
 	}
 	fmt.Println()
-	fmt.Println("使用 'clashctl restore <文件名>' 恢复配置")
+	fmt.Println("使用 'clashctl backup restore <文件名>' 恢复配置")
 }
 
 func runRestore(cmd *cobra.Command, args []string) error {

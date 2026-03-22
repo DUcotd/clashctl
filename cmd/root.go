@@ -17,10 +17,9 @@ var rootCmd = &cobra.Command{
   - clashctl init            交互式完成安装、配置、启动
   - clashctl nodes           进入节点测速与切换 TUI
   - clashctl service status  查看运行状态
+  - clashctl config ...      导入导出与查看配置
   - clashctl doctor          环境自检
-
-高级/脚本化能力统一放在：
-  - clashctl advanced ...`,
+  - clashctl backup ...      备份与恢复`,
 }
 
 // Execute runs the root command.

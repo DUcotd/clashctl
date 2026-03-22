@@ -1,15 +1,15 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"clashctl/internal/app"
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
+	setupflow "clashctl/internal/setup"
 	"clashctl/internal/subscription"
 	"clashctl/internal/system"
 )
@@ -24,8 +24,6 @@ type SetupService interface {
 type defaultSetupService struct {
 	newRuntimeManager   func() *mihomo.RuntimeManager
 	newResolver         func() *subscription.Resolver
-	saveAppConfig       func(*core.AppConfig) error
-	ensureDir           func(string) error
 	readFile            func(string) ([]byte, error)
 	persistShellProxy   func(int) (*system.ShellProxyResult, error)
 	removeShellProxyEnv func() (*system.ShellProxyResult, error)
@@ -46,8 +44,6 @@ func newDefaultSetupService() SetupService {
 	return &defaultSetupService{
 		newRuntimeManager:   mihomo.NewRuntimeManager,
 		newResolver:         subscription.NewResolver,
-		saveAppConfig:       app.SaveAppConfig,
-		ensureDir:           system.EnsureDir,
 		readFile:            os.ReadFile,
 		persistShellProxy:   system.PersistShellProxyEnv,
 		removeShellProxyEnv: system.RemoveShellProxyEnv,
@@ -137,14 +133,8 @@ func (s *defaultSetupService) StartRemote(appCfg *core.AppConfig) <-chan setupPr
 			return
 		}
 
-		configPath := filepath.Join(run.appCfg.ConfigDir, "config.yaml")
 		run.current("写入配置文件")
-		if !s.stepWritePlan(run, plan, configPath) {
-			return
-		}
-
-		run.current("保存 clashctl 配置")
-		if !s.stepSaveAppConfig(run, "") {
+		if !s.stepApplyPlan(run, plan, "") {
 			return
 		}
 
@@ -275,7 +265,7 @@ func (r *setupRunContext) stepResolveRemotePlan(resolver *subscription.Resolver)
 
 	plan, err := resolver.ResolveRemoteURL(r.appCfg, r.appCfg.SubscriptionURL, 15*time.Second)
 	if err != nil {
-		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl advanced import --file sub.txt --apply --start'"
+		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl config import --file sub.txt --apply --start'"
 		if mihomo.IsMihomoRunningAt(r.appCfg.ControllerAddr) {
 			detail += "\n检测到当前已有 Mihomo 在运行；旧代理链路或系统代理可能干扰了本次检查"
 		}
@@ -330,77 +320,83 @@ func (r *setupRunContext) stepResolveRemotePlan(resolver *subscription.Resolver)
 	return plan, true
 }
 
-func (s *defaultSetupService) stepWritePlan(run *setupRunContext, plan *subscription.ResolvedConfigPlan, path string) bool {
+func (s *defaultSetupService) stepApplyPlan(run *setupRunContext, plan *subscription.ResolvedConfigPlan, saveDetail string) bool {
 	if plan == nil {
 		run.addStep(ExecStep{Label: "写入配置文件", Success: false, Detail: "配置计划为空"})
 		return false
 	}
-	if err := s.ensureDir(run.appCfg.ConfigDir); err != nil {
-		run.addStep(ExecStep{Label: "创建配置目录", Success: false, Detail: err.Error()})
-		return false
+	result, err := setupflow.ApplyResolvedPlan(run.appCfg, plan, setupflow.ApplyPlanOptions{SaveAppConfig: true})
+	if result != nil && result.ConfigDir != "" {
+		run.addStep(ExecStep{Label: "创建配置目录", Success: true, Detail: result.ConfigDir})
 	}
-	run.addStep(ExecStep{Label: "创建配置目录", Success: true, Detail: run.appCfg.ConfigDir})
-
-	yamlData, err := plan.RenderYAML()
 	if err != nil {
-		run.addStep(ExecStep{Label: "渲染 YAML", Success: false, Detail: err.Error()})
-		return false
-	}
-	run.addStep(ExecStep{
-		Label:   "渲染 YAML",
-		Success: true,
-		Detail:  fmt.Sprintf("%d bytes", len(yamlData)),
-	})
-
-	if err := mihomo.ValidateConfigContent(yamlData, run.appCfg.ConfigDir); err != nil {
-		run.addStep(ExecStep{
-			Label:   "校验配置",
-			Success: false,
-			Detail:  err.Error() + "\n配置可能有语法错误，但仍会尝试写入",
-		})
-	} else {
-		run.addStep(ExecStep{Label: "校验配置", Success: true, Detail: "配置语法检查通过"})
-	}
-
-	backupPath, err := plan.Save(path)
-	if err != nil {
+		if stageErr := new(setupflow.ApplyPlanError); strings.TrimSpace(err.Error()) != "" && errors.As(err, &stageErr) {
+			switch stageErr.Stage {
+			case setupflow.StageCreateConfigDir:
+				run.addStep(ExecStep{Label: "创建配置目录", Success: false, Detail: stageErr.Error()})
+				return false
+			case setupflow.StageRenderYAML:
+				run.addStep(ExecStep{Label: "渲染 YAML", Success: false, Detail: stageErr.Error()})
+				return false
+			case setupflow.StageWriteConfig:
+				if result != nil && result.YAMLSize > 0 {
+					run.addStep(ExecStep{Label: "渲染 YAML", Success: true, Detail: fmt.Sprintf("%d bytes", result.YAMLSize)})
+					appendValidationStep(run, result.ValidationError)
+				}
+				run.addStep(ExecStep{Label: "写入配置文件", Success: false, Detail: stageErr.Error()})
+				return false
+			case setupflow.StageSaveAppConfig:
+				if result != nil && result.YAMLSize > 0 {
+					run.addStep(ExecStep{Label: "渲染 YAML", Success: true, Detail: fmt.Sprintf("%d bytes", result.YAMLSize)})
+					appendValidationStep(run, result.ValidationError)
+					appendWritePlanStep(run, plan, result)
+				}
+				run.addStep(ExecStep{Label: "保存 clashctl 配置", Success: false, Detail: stageErr.Error()})
+				return false
+			}
+		}
 		run.addStep(ExecStep{Label: "写入配置文件", Success: false, Detail: err.Error()})
 		return false
 	}
+	if result == nil {
+		run.addStep(ExecStep{Label: "写入配置文件", Success: false, Detail: "配置写入结果为空"})
+		return false
+	}
+	run.addStep(ExecStep{Label: "渲染 YAML", Success: true, Detail: fmt.Sprintf("%d bytes", result.YAMLSize)})
+	appendValidationStep(run, result.ValidationError)
+	appendWritePlanStep(run, plan, result)
+	detail := "已写入 ~/.config/clashctl/config.yaml"
+	if saveDetail != "" {
+		detail += "\n" + saveDetail
+	}
+	run.addStep(ExecStep{Label: "保存 clashctl 配置", Success: true, Detail: detail})
+	return true
+}
 
-	detail := "已写入 " + path
+func appendValidationStep(run *setupRunContext, validationErr error) {
+	if validationErr != nil {
+		run.addStep(ExecStep{
+			Label:   "校验配置",
+			Success: false,
+			Detail:  validationErr.Error() + "\n配置可能有语法错误，但仍会尝试写入",
+		})
+		return
+	}
+	run.addStep(ExecStep{Label: "校验配置", Success: true, Detail: "配置语法检查通过"})
+}
+
+func appendWritePlanStep(run *setupRunContext, plan *subscription.ResolvedConfigPlan, result *setupflow.ApplyPlanResult) {
+	detail := "已写入 " + result.OutputPath
 	if plan.Kind != subscription.PlanKindProvider {
 		detail += "\n静态配置优先，后续无需服务器再次拉取订阅"
 	}
-	if backupPath != "" {
-		detail += "\n旧配置已备份至: " + backupPath
+	if result.BackupPath != "" {
+		detail += "\n旧配置已备份至: " + result.BackupPath
 	}
 	if len(plan.Warnings) > 0 {
 		detail += "\n" + strings.Join(plan.Warnings, "\n")
 	}
 	run.addStep(ExecStep{Label: "写入配置文件", Success: true, Detail: detail})
-	return true
-}
-
-func (s *defaultSetupService) stepSaveAppConfig(run *setupRunContext, extraDetail string) bool {
-	if err := s.saveAppConfig(run.appCfg); err != nil {
-		run.addStep(ExecStep{
-			Label:   "保存 clashctl 配置",
-			Success: false,
-			Detail:  err.Error(),
-		})
-		return false
-	}
-	detail := "已写入 ~/.config/clashctl/config.yaml"
-	if extraDetail != "" {
-		detail += "\n" + extraDetail
-	}
-	run.addStep(ExecStep{
-		Label:   "保存 clashctl 配置",
-		Success: true,
-		Detail:  detail,
-	})
-	return true
 }
 
 func (s *defaultSetupService) stepManageShellProxyEnv(run *setupRunContext) {
@@ -522,7 +518,7 @@ func (r *setupRunContext) appendStartResult(result *mihomo.StartResult) {
 			detail += fmt.Sprintf("\n当前 PROXY 候选: %v", result.Inventory.Candidates)
 		}
 		detail += "\n常见原因: 服务器无法直连订阅 URL、provider 拉取失败、或订阅返回的是原始节点链接"
-		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl advanced import --file sub.txt -o config.yaml' 生成静态配置"
+		detail += "\n建议: 先在本地下载订阅，再执行 'clashctl config import --file sub.txt -o config.yaml' 生成静态配置"
 		r.addStep(ExecStep{
 			Label:   "验证代理节点加载",
 			Success: false,
@@ -565,14 +561,8 @@ func (s *defaultSetupService) executeResolvedContent(run *setupRunContext, data 
 		Detail:  plan.Summary,
 	})
 
-	configPath := filepath.Join(run.appCfg.ConfigDir, "config.yaml")
 	run.current("写入配置文件")
-	if !s.stepWritePlan(run, plan, configPath) {
-		return
-	}
-
-	run.current("保存 clashctl 配置")
-	if !s.stepSaveAppConfig(run, saveDetail) {
+	if !s.stepApplyPlan(run, plan, saveDetail) {
 		return
 	}
 

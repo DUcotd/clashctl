@@ -60,7 +60,7 @@ func TestPrintRuntimeStartResultCompatibleOnly(t *testing.T) {
 	if !strings.Contains(out, "当前仅剩 COMPATIBLE") {
 		t.Fatalf("output missing compatible warning in:\n%s", out)
 	}
-	if !strings.Contains(out, "clashctl advanced import --file sub.txt --apply --start") {
+	if !strings.Contains(out, "clashctl config import --file sub.txt --apply --start") {
 		t.Fatalf("output missing import fallback hint in:\n%s", out)
 	}
 }

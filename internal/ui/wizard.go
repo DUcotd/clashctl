@@ -165,7 +165,7 @@ func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSv
 	importInput.TextStyle = InputStyle
 
 	return WizardModel{
-		screen:       ScreenWelcome,
+		screen:       ScreenSubscription,
 		appCfg:       appCfg,
 		title:        "🧙 clashctl 配置向导",
 		spinner:      s,
@@ -340,8 +340,8 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "esc":
-		m.setScreen(ScreenWelcome)
-		return m, nil
+		m.quitting = true
+		return m, tea.Quit
 	default:
 		return m.updateSubscriptionInput(msg)
 	}
@@ -432,11 +432,11 @@ func (m WizardModel) updateMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.modeIndex++
 		}
 	case "enter":
-		if m.modeIndex == 0 {
-			m.appCfg.Mode = "tun"
-		} else {
-			m.appCfg.Mode = "mixed"
-		}
+		m.applyModeSelection()
+		m.setScreen(ScreenPreview)
+		return m, nil
+	case "a":
+		m.applyModeSelection()
 		m.setScreen(ScreenAdvanced)
 		return m, nil
 	case "esc":
@@ -461,7 +461,7 @@ func (m WizardModel) updateAdvanced(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setScreen(ScreenPreview)
 		return m, nil
 	case "esc":
-		m.setScreen(ScreenMode)
+		m.setScreen(ScreenPreview)
 		return m, nil
 	default:
 		if m.advancedIndex < len(m.advancedInputs) {
@@ -498,10 +498,21 @@ func (m *WizardModel) collectAdvancedValues() {
 	}
 }
 
+func (m *WizardModel) applyModeSelection() {
+	if m.modeIndex == 0 {
+		m.appCfg.Mode = "tun"
+		return
+	}
+	m.appCfg.Mode = "mixed"
+}
+
 func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
 		m.scrollViewport(msg.String())
+		return m, nil
+	case "a":
+		m.setScreen(ScreenAdvanced)
 		return m, nil
 	case "enter":
 		m.setScreen(ScreenExecution)

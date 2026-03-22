@@ -115,6 +115,7 @@ func ProxyEnvForDisplay() []string {
 		"HTTP_PROXY",
 		"HTTPS_PROXY",
 		"ALL_PROXY",
+		"NODE_USE_ENV_PROXY",
 	}
 	seen := make(map[string]struct{}, len(keys))
 	var out []string
@@ -142,6 +143,7 @@ func StripProxyEnv(env []string) []string {
 		"HTTP_PROXY":  {},
 		"HTTPS_PROXY": {},
 		"ALL_PROXY":   {},
+		"NODE_USE_ENV_PROXY": {},
 		"no_proxy":    {},
 		"NO_PROXY":    {},
 	}

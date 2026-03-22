@@ -16,15 +16,15 @@ func TestScreenStepLabel(t *testing.T) {
 		want   string
 	}{
 		{ScreenWelcome, "欢迎"},
-		{ScreenSubscription, "步骤 1/8: 选择订阅来源"},
-		{ScreenMode, "步骤 2/8: 选择运行模式"},
-		{ScreenAdvanced, "步骤 3/8: 高级设置"},
-		{ScreenPreview, "步骤 4/8: 配置预览"},
-		{ScreenExecution, "步骤 5/8: 正在配置..."},
-		{ScreenResult, "步骤 6/8: 执行结果"},
-		{ScreenImportLocal, "步骤 6/8: 导入本地订阅"},
-		{ScreenGroupSelect, "步骤 7/8: 选择代理组"},
-		{ScreenNodeSelect, "步骤 8/8: 选择节点"},
+		{ScreenSubscription, "步骤 1/7: 选择订阅来源"},
+		{ScreenMode, "步骤 2/7: 选择运行模式"},
+		{ScreenAdvanced, "可选设置: 高级参数"},
+		{ScreenPreview, "步骤 3/7: 配置预览"},
+		{ScreenExecution, "步骤 4/7: 正在配置..."},
+		{ScreenResult, "步骤 5/7: 执行结果"},
+		{ScreenImportLocal, "步骤 5/7: 导入本地订阅"},
+		{ScreenGroupSelect, "步骤 6/7: 选择代理组"},
+		{ScreenNodeSelect, "步骤 7/7: 选择节点"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -111,8 +111,8 @@ func TestFormatNodeDelay(t *testing.T) {
 func TestNewWizardDefaults(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 
-	if wizard.screen != ScreenWelcome {
-		t.Errorf("initial screen = %d, want %d", wizard.screen, ScreenWelcome)
+	if wizard.screen != ScreenSubscription {
+		t.Errorf("initial screen = %d, want %d", wizard.screen, ScreenSubscription)
 	}
 	if wizard.appCfg == nil {
 		t.Fatal("appCfg should not be nil")
@@ -154,7 +154,7 @@ func TestStandaloneNodeManagerViewUsesNodeTitle(t *testing.T) {
 	if !strings.Contains(view, "📡 clashctl 节点管理") {
 		t.Fatalf("view missing node manager title:\n%s", view)
 	}
-	if strings.Contains(view, "步骤 7/8") {
+	if strings.Contains(view, "步骤 ") {
 		t.Fatalf("view should not include wizard step label:\n%s", view)
 	}
 }
@@ -221,6 +221,52 @@ func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
 	}
 	if got.inlineContent != "" || got.localImportPath != "" {
 		t.Fatalf("unexpected alternate source state: inline=%q file=%q", got.inlineContent, got.localImportPath)
+	}
+}
+
+func TestModeEnterUsesQuickPathToPreview(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenMode
+	wizard.modeIndex = 1
+
+	updated, _ := wizard.updateMode(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(WizardModel)
+	if got.screen != ScreenPreview {
+		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	}
+	if got.appCfg.Mode != "mixed" {
+		t.Fatalf("Mode = %q, want mixed", got.appCfg.Mode)
+	}
+}
+
+func TestModeAOpensAdvancedWithoutExtraStep(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenMode
+	wizard.modeIndex = 0
+
+	updated, _ := wizard.updateMode(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	got := updated.(WizardModel)
+	if got.screen != ScreenAdvanced {
+		t.Fatalf("screen = %v, want ScreenAdvanced", got.screen)
+	}
+	if got.appCfg.Mode != "tun" {
+		t.Fatalf("Mode = %q, want tun", got.appCfg.Mode)
+	}
+}
+
+func TestAdvancedEscDiscardsDraftChanges(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenAdvanced
+	wizard.appCfg.ConfigDir = "/etc/mihomo"
+	wizard.advancedInputs[0].SetValue("/tmp/custom")
+
+	updated, _ := wizard.updateAdvanced(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(WizardModel)
+	if got.screen != ScreenPreview {
+		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	}
+	if got.appCfg.ConfigDir != "/etc/mihomo" {
+		t.Fatalf("ConfigDir = %q, want original value", got.appCfg.ConfigDir)
 	}
 }
 

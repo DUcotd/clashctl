@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"os/signal"
+	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
+	nodeops "clashctl/internal/nodes"
+	"clashctl/internal/ui"
 )
 
 var nodesCmd = &cobra.Command{
@@ -107,6 +111,35 @@ func init() {
 	rootCmd.AddCommand(nodesCmd)
 }
 
+func runTUINodes(cmd *cobra.Command, args []string) error {
+	appCfg, err := loadAppConfig()
+	if err != nil {
+		return err
+	}
+
+	service := nodeops.NewService()
+	if err := service.CheckConnection(appCfg.ControllerAddr); err != nil {
+		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl service start' 或完成 'clashctl init'", err)
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	manager := ui.NewNodeManager(appCfg)
+	p := tea.NewProgram(manager, tea.WithAltScreen())
+
+	go func() {
+		<-sigCh
+		p.Quit()
+	}()
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("节点管理界面运行出错: %w", err)
+	}
+	return nil
+}
+
 func runNodesList(cmd *cobra.Command, args []string) error {
 	cfg, err := loadAppConfig()
 	if err != nil {
@@ -118,9 +151,8 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 		groupName = args[0]
 	}
 
-	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
-
-	detail, err := client.GetProxyGroupDetail(groupName)
+	service := nodeops.NewService()
+	detail, err := service.GetGroup(cfg.ControllerAddr, groupName)
 	if err != nil {
 		return fmt.Errorf("获取节点列表失败: %w", err)
 	}
@@ -128,20 +160,20 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 		return writeJSON(buildNodesListReport(detail))
 	}
 
-	fmt.Printf("📡 代理组: %s (%s)\n\n", detail.Name, detail.Type)
+	fmt.Printf("📡 代理组: %s (%s)\n\n", detail.Name, mihomo.NormalizeProxyType(detail.Type))
 
-	if detail.Now != "" {
-		fmt.Printf("当前选中: %s\n\n", detail.Now)
+	if detail.Current != "" {
+		fmt.Printf("当前选中: %s\n\n", detail.Current)
 	}
 
-	fmt.Printf("共 %d 个节点:\n\n", len(detail.All))
+	fmt.Printf("共 %d 个节点:\n\n", len(detail.Nodes))
 
-	for i, nodeName := range detail.All {
+	for i, node := range detail.Nodes {
 		marker := "  "
-		if nodeName == detail.Now {
+		if node.Selected {
 			marker = "▸ "
 		}
-		fmt.Printf("  %s%3d. %s\n", marker, i+1, nodeName)
+		fmt.Printf("  %s%3d. %s\n", marker, i+1, node.Name)
 	}
 
 	return nil
@@ -159,9 +191,8 @@ func runNodesUse(cmd *cobra.Command, args []string) error {
 		groupName = args[1]
 	}
 
-	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
-
-	if err := client.SwitchProxy(groupName, nodeName); err != nil {
+	service := nodeops.NewService()
+	if err := service.SwitchNode(cfg.ControllerAddr, groupName, nodeName); err != nil {
 		return fmt.Errorf("切换节点失败: %w", err)
 	}
 	if nodesUseJSON {
@@ -178,9 +209,8 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
-
-	groups, err := client.GetAllProxyGroups()
+	service := nodeops.NewService()
+	groups, err := service.ListGroups(cfg.ControllerAddr)
 	if err != nil {
 		return fmt.Errorf("获取代理组列表失败: %w", err)
 	}
@@ -199,15 +229,14 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	fmt.Println("📁 代理组列表")
 	fmt.Println()
 
-	for _, name := range sortedProxyGroupNames(groups) {
-		group := groups[name]
+	for _, group := range groups {
 		typ := mihomo.NormalizeProxyType(group.Type)
 		typeIcon := mihomo.GroupTypeIcon(typ)
-		fmt.Printf("  %s %s [%s]", typeIcon, name, typ)
-		if group.Now != "" {
-			fmt.Printf(" → %s", group.Now)
+		fmt.Printf("  %s %s [%s]", typeIcon, group.Name, typ)
+		if group.Current != "" {
+			fmt.Printf(" → %s", group.Current)
 		}
-		fmt.Printf(" (%d 节点)\n", len(group.All))
+		fmt.Printf(" (%d 节点)\n", group.NodeCount)
 	}
 
 	fmt.Println()
@@ -225,23 +254,26 @@ func runNodesTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--concurrency 必须大于 0")
 	}
 
-	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
+	service := nodeops.NewService()
 
 	groupNames := []string{"PROXY"}
 	if len(args) > 0 {
 		groupNames = []string{args[0]}
 	}
 	if nodesTestAllGroups {
-		groups, err := client.GetAllProxyGroups()
+		groups, err := service.ListGroups(cfg.ControllerAddr)
 		if err != nil {
 			return fmt.Errorf("获取代理组列表失败: %w", err)
 		}
-		groupNames = sortedProxyGroupNames(groups)
+		groupNames = make([]string, 0, len(groups))
+		for _, group := range groups {
+			groupNames = append(groupNames, group.Name)
+		}
 	}
 
 	details := make([]*mihomo.ProxyGroupDetail, 0, len(groupNames))
 	for _, groupName := range groupNames {
-		detail, err := client.TestProxyGroupNodes(groupName, nodesTestConcurrent)
+		detail, err := service.TestGroup(cfg.ControllerAddr, groupName, nodesTestConcurrent)
 		if err != nil {
 			return fmt.Errorf("测速代理组 %s 失败: %w", groupName, err)
 		}
@@ -268,45 +300,35 @@ func buildNodesTestReport(concurrency int, details []*mihomo.ProxyGroupDetail) *
 	return &nodesTestReport{Concurrency: concurrency, Groups: groups}
 }
 
-func buildNodesListReport(detail *mihomo.ProxyGroupDetail) *nodesListReport {
+func buildNodesListReport(detail *nodeops.GroupDetail) *nodesListReport {
 	report := &nodesListReport{
 		Group:   detail.Name,
 		Type:    mihomo.NormalizeProxyType(detail.Type),
-		Current: detail.Now,
-		Count:   len(detail.All),
-		Nodes:   make([]nodesListEntry, 0, len(detail.All)),
+		Current: detail.Current,
+		Count:   len(detail.Nodes),
+		Nodes:   make([]nodesListEntry, 0, len(detail.Nodes)),
 	}
-	for i, nodeName := range detail.All {
+	for i, node := range detail.Nodes {
 		report.Nodes = append(report.Nodes, nodesListEntry{
 			Index:    i + 1,
-			Name:     nodeName,
-			Selected: nodeName == detail.Now,
+			Name:     node.Name,
+			Selected: node.Selected,
 		})
 	}
 	return report
 }
 
-func buildNodesGroupsReport(groups map[string]mihomo.ProxyGroup) *nodesGroupsReport {
+func buildNodesGroupsReport(groups []nodeops.GroupSummary) *nodesGroupsReport {
 	report := &nodesGroupsReport{Groups: make([]nodesGroupSummary, 0, len(groups))}
-	for _, name := range sortedProxyGroupNames(groups) {
-		group := groups[name]
+	for _, group := range groups {
 		report.Groups = append(report.Groups, nodesGroupSummary{
-			Name:      name,
+			Name:      group.Name,
 			Type:      mihomo.NormalizeProxyType(group.Type),
-			Current:   group.Now,
-			NodeCount: len(group.All),
+			Current:   group.Current,
+			NodeCount: group.NodeCount,
 		})
 	}
 	return report
-}
-
-func sortedProxyGroupNames(groups map[string]mihomo.ProxyGroup) []string {
-	names := make([]string, 0, len(groups))
-	for name := range groups {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
 
 func printProxyGroupLatency(w io.Writer, detail *mihomo.ProxyGroupDetail) {

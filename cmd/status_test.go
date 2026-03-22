@@ -29,7 +29,7 @@ func TestProxyStatusLinesMixedWithoutEnv(t *testing.T) {
 	got := proxyStatusLines(cfg, nil)
 	want := []string{
 		"Shell 代理: ⚠ 未设置",
-		"  当前为 mixed-port 模式；像 codex/opencode 这类 CLI 需要显式导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 指向 127.0.0.1:7890",
+		"  当前为 mixed-port 模式；像 codex/opencode/Node.js 这类 CLI 需要显式导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY，并为 Node.js 额外设置 NODE_USE_ENV_PROXY=1（代理地址 127.0.0.1:7890）",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("proxyStatusLines() = %#v, want %#v", got, want)
@@ -114,7 +114,7 @@ func TestPrintStatusReportIncludesFallbackHint(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, want := range []string{"服务状态: ✅ 运行中 (systemd)", "Controller API: ✅ 可达 (Mihomo 1.19.10)", "当前仅剩 COMPATIBLE", "advanced import --file sub.txt"} {
+	for _, want := range []string{"服务状态: ✅ 运行中 (systemd)", "Controller API: ✅ 可达 (Mihomo 1.19.10)", "当前仅剩 COMPATIBLE", "config import --file sub.txt"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q in:\n%s", want, out)
 		}

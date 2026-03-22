@@ -1,11 +1,7 @@
 package ui
 
 import (
-	"sort"
-	"strings"
-	"sync"
-
-	"clashctl/internal/mihomo"
+	nodeops "clashctl/internal/nodes"
 )
 
 // NodeService hides controller operations behind a UI-friendly interface.
@@ -16,69 +12,46 @@ type NodeService interface {
 	StartNodeTest(controllerAddr, groupName string, nodes []NodeItem, maxConcurrent int) <-chan nodeTestProgressMsg
 }
 
-type controllerClient interface {
-	GetAllProxyGroups() (map[string]mihomo.ProxyGroup, error)
-	GetProxyGroupDetail(name string) (*mihomo.ProxyGroupDetail, error)
-	GetAllProxies() (map[string]mihomo.ProxyInfo, error)
-	SwitchProxy(groupName, nodeName string) error
-	TestNode(groupName, nodeName string) int
-}
-
 type defaultNodeService struct {
-	newClient func(controllerAddr string) controllerClient
+	shared nodeops.Service
 }
 
 func newDefaultNodeService() NodeService {
 	return &defaultNodeService{
-		newClient: func(controllerAddr string) controllerClient {
-			return mihomo.NewClient("http://" + controllerAddr)
-		},
+		shared: nodeops.NewService(),
 	}
 }
 
 func (s *defaultNodeService) LoadGroups(controllerAddr string) ([]GroupItem, error) {
-	client := s.newClient(controllerAddr)
-	groups, err := client.GetAllProxyGroups()
+	groups, err := s.shared.ListGroups(controllerAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	items := make([]GroupItem, 0, len(groups))
-	for name, group := range groups {
+	for _, group := range groups {
 		items = append(items, GroupItem{
-			Name:      name,
+			Name:      group.Name,
 			Type:      group.Type,
-			Now:       group.Now,
-			NodeCount: len(group.All),
+			Now:       group.Current,
+			NodeCount: group.NodeCount,
 		})
 	}
-
-	sort.Slice(items, func(i, j int) bool {
-		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
-	})
 	return items, nil
 }
 
 func (s *defaultNodeService) LoadNodes(controllerAddr, groupName string) ([]NodeItem, error) {
-	client := s.newClient(controllerAddr)
-	detail, err := client.GetProxyGroupDetail(groupName)
+	group, err := s.shared.GetGroup(controllerAddr, groupName)
 	if err != nil {
 		return nil, err
 	}
 
-	typeMap := make(map[string]string)
-	if allProxies, err := client.GetAllProxies(); err == nil {
-		for name, info := range allProxies {
-			typeMap[name] = info.Type
-		}
-	}
-
-	items := make([]NodeItem, 0, len(detail.All))
-	for _, name := range detail.All {
+	items := make([]NodeItem, 0, len(group.Nodes))
+	for _, node := range group.Nodes {
 		items = append(items, NodeItem{
-			Name:     name,
-			Protocol: typeMap[name],
-			Selected: name == detail.Now,
+			Name:     node.Name,
+			Protocol: node.Protocol,
+			Selected: node.Selected,
 		})
 	}
 
@@ -86,54 +59,27 @@ func (s *defaultNodeService) LoadNodes(controllerAddr, groupName string) ([]Node
 }
 
 func (s *defaultNodeService) SwitchNode(controllerAddr, groupName, nodeName string) error {
-	return s.newClient(controllerAddr).SwitchProxy(groupName, nodeName)
+	return s.shared.SwitchNode(controllerAddr, groupName, nodeName)
 }
 
 func (s *defaultNodeService) StartNodeTest(controllerAddr, groupName string, nodes []NodeItem, maxConcurrent int) <-chan nodeTestProgressMsg {
 	stream := make(chan nodeTestProgressMsg)
 	go func() {
 		defer close(stream)
-		total := len(nodes)
-		if total == 0 {
-			stream <- nodeTestProgressMsg{done: true}
-			return
+		entries := make([]nodeops.NodeEntry, 0, len(nodes))
+		for _, node := range nodes {
+			entries = append(entries, nodeops.NodeEntry{Name: node.Name, Protocol: node.Protocol, Delay: node.Delay, Selected: node.Selected})
 		}
-		if maxConcurrent <= 0 {
-			maxConcurrent = 10
+		for result := range s.shared.StreamNodeTests(controllerAddr, groupName, entries, maxConcurrent) {
+			stream <- nodeTestProgressMsg{
+				index:  result.Index,
+				delay:  result.Delay,
+				tested: result.Tested,
+				total:  result.Total,
+				done:   result.Done,
+				err:    result.Error,
+			}
 		}
-
-		client := s.newClient(controllerAddr)
-		sem := make(chan struct{}, maxConcurrent)
-		results := make(chan nodeTestProgressMsg, total)
-		var wg sync.WaitGroup
-
-		for i, node := range nodes {
-			wg.Add(1)
-			sem <- struct{}{}
-			go func(index int, nodeName string) {
-				defer wg.Done()
-				defer func() { <-sem }()
-				results <- nodeTestProgressMsg{
-					index: index,
-					delay: client.TestNode(groupName, nodeName),
-				}
-			}(i, node.Name)
-		}
-
-		go func() {
-			wg.Wait()
-			close(results)
-		}()
-
-		tested := 0
-		for result := range results {
-			tested++
-			result.tested = tested
-			result.total = total
-			stream <- result
-		}
-
-		stream <- nodeTestProgressMsg{done: true, tested: tested, total: total}
 	}()
 	return stream
 }

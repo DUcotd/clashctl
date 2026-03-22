@@ -105,7 +105,7 @@ func checkShellProxyEnv() CheckResult {
 		return CheckResult{
 			Name:    "Shell 代理环境",
 			Passed:  false,
-			Problem: "当前 shell 未导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY",
+			Problem: "当前 shell 未导出 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY（Node.js 还需要 NODE_USE_ENV_PROXY=1）",
 			Suggest: "如果使用 mixed-port，请先执行 'source ~/.bashrc' 或重新打开终端",
 		}
 	}
