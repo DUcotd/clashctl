@@ -222,8 +222,9 @@ func checkDiskSpace(dir string) CheckResult {
 		}
 	}
 
-	// Available space in GB
-	availGB := float64(stat.Bavail*uint64(stat.Bsize)) / (1024 * 1024 * 1024)
+	// Available space in GB. Convert operands separately to avoid integer overflow
+	// in intermediate multiplication on large filesystems.
+	availGB := float64(stat.Bavail) * float64(stat.Bsize) / (1024 * 1024 * 1024)
 
 	if availGB < 0.1 {
 		return CheckResult{
@@ -374,6 +375,8 @@ func CheckTUNPermission() error {
 		}
 		return fmt.Errorf("无法打开 /dev/net/tun: %w", err)
 	}
-	fd.Close()
+	if err := fd.Close(); err != nil {
+		return fmt.Errorf("关闭 /dev/net/tun 失败: %w", err)
+	}
 	return nil
 }

@@ -89,12 +89,14 @@ func ValidateConfigContent(content []byte, configDir string) error {
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
 
 	if _, err := tmpFile.Write(content); err != nil {
+		_ = tmpFile.Close()
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("关闭临时文件失败: %w", err)
+	}
 
 	// Validate using mihomo -t
 	binary, err := FindBinary()

@@ -52,7 +52,9 @@ func bindExportFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&exportMixedPort, "port", "p", core.DefaultMixedPort, "mixed-port 值")
 	cmd.Flags().StringVarP(&exportOutput, "output", "o", "config.yaml", "输出文件路径")
 	cmd.Flags().BoolVar(&exportJSON, "json", false, "以 JSON 输出导出结果")
-	cmd.MarkFlagRequired("url")
+	if err := cmd.MarkFlagRequired("url"); err != nil {
+		panic(err)
+	}
 }
 
 func runExport(cmd *cobra.Command, args []string) error {

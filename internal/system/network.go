@@ -216,7 +216,7 @@ func CheckPortInUse(addr string) bool {
 	if err != nil {
 		return true
 	}
-	ln.Close()
+	_ = ln.Close()
 	return false
 }
 

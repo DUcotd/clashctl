@@ -78,7 +78,9 @@ func bindImportFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&importApply, "apply", false, "直接写入当前 clashctl 配置目录")
 	cmd.Flags().BoolVar(&importStart, "start", false, "写入后立即启动 Mihomo（隐含 --apply）")
 	cmd.Flags().BoolVar(&importJSON, "json", false, "以 JSON 输出导入结果")
-	cmd.MarkFlagRequired("file")
+	if err := cmd.MarkFlagRequired("file"); err != nil {
+		panic(err)
+	}
 }
 
 func runImport(cmd *cobra.Command, args []string) error {

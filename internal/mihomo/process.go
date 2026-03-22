@@ -74,7 +74,7 @@ func (p *Process) Start() error {
 	if err := p.cmd.Start(); err != nil {
 		// Close devNull since child didn't start — FD would leak otherwise
 		if devErr == nil {
-			devNull.Close()
+			_ = devNull.Close()
 		}
 		return fmt.Errorf("启动 Mihomo 失败: %w", err)
 	}
@@ -82,7 +82,7 @@ func (p *Process) Start() error {
 	// Close parent's copy of devNull — child has its own FD via fork.
 	// This prevents FD leak on repeated start/stop cycles.
 	if devErr == nil {
-		devNull.Close()
+		_ = devNull.Close()
 	}
 
 	// Give it a moment to start up

@@ -13,6 +13,7 @@ import (
 	"clashctl/internal/app"
 	"clashctl/internal/config"
 	"clashctl/internal/core"
+	"clashctl/internal/system"
 
 	"gopkg.in/yaml.v3"
 )
@@ -403,7 +404,10 @@ func copyBackupFile(sourcePath, backupPath string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(backupPath, data, 0600)
+	if err := system.ValidateOutputPath(backupPath); err != nil {
+		return err
+	}
+	return system.WriteFileAtomic(backupPath, data, 0600)
 }
 
 func formatSize(bytes int64) string {

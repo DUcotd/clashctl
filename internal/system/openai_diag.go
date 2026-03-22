@@ -70,9 +70,13 @@ func DetectEgressInfo(client HTTPDoer) (*EgressInfo, error) {
 		}
 
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 		if readErr != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", rawURL, readErr))
+			continue
+		}
+		if closeErr != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", rawURL, closeErr))
 			continue
 		}
 		if resp.StatusCode >= 400 {
