@@ -70,12 +70,18 @@ func LoadOrCreateAppConfig() (*core.AppConfig, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+	if err := ValidateManagedPaths(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
 
 // SaveAppConfig saves the AppConfig to disk as YAML.
 func SaveAppConfig(cfg *core.AppConfig) error {
+	if err := ValidateManagedPaths(cfg); err != nil {
+		return err
+	}
 	if err := EnsureMyAppDir(); err != nil {
 		return err
 	}
