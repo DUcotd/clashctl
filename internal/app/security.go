@@ -18,6 +18,9 @@ func ValidateManagedPaths(cfg *core.AppConfig) error {
 	if err := validateManagedConfigDir(cfg.ConfigDir); err != nil {
 		return fmt.Errorf("配置目录不安全: %w", err)
 	}
+	if err := core.ValidateControllerAddr(cfg.ControllerAddr); err != nil {
+		return fmt.Errorf("控制器地址不安全: %w", err)
+	}
 	if err := validateManagedProviderPath(cfg.ConfigDir, cfg.ProviderPath); err != nil {
 		return fmt.Errorf("Provider 路径不安全: %w", err)
 	}

@@ -36,10 +36,13 @@ func TestAppConfigValidate(t *testing.T) {
 		wantErrs int
 	}{
 		{"valid tun", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 0},
+		{"valid localhost controller", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "localhost:9090"}, 0},
 		{"empty url", &AppConfig{SubscriptionURL: "", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 1},
 		{"invalid mode", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "bad", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 1},
 		{"bad port", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 0, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1:9090"}, 1},
 		{"empty config dir", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "", ControllerAddr: "127.0.0.1:9090"}, 1},
+		{"remote controller addr", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "0.0.0.0:9090"}, 1},
+		{"bad controller format", &AppConfig{SubscriptionURL: "https://example.com/sub", Mode: "tun", MixedPort: 7890, ConfigDir: "/etc/mihomo", ControllerAddr: "127.0.0.1"}, 1},
 	}
 
 	for _, tt := range tests {
@@ -47,6 +50,30 @@ func TestAppConfigValidate(t *testing.T) {
 			errs := tt.cfg.Validate()
 			if len(errs) != tt.wantErrs {
 				t.Errorf("Validate() got %d errors, want %d: %v", len(errs), tt.wantErrs, errs)
+			}
+		})
+	}
+}
+
+func TestValidateControllerAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr bool
+	}{
+		{name: "loopback ipv4", addr: "127.0.0.1:9090", wantErr: false},
+		{name: "localhost", addr: "localhost:9090", wantErr: false},
+		{name: "loopback ipv6", addr: "[::1]:9090", wantErr: false},
+		{name: "all interfaces", addr: "0.0.0.0:9090", wantErr: true},
+		{name: "private lan", addr: "192.168.1.2:9090", wantErr: true},
+		{name: "missing port", addr: "127.0.0.1", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateControllerAddr(tt.addr)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateControllerAddr(%q) error = %v, wantErr %v", tt.addr, err, tt.wantErr)
 			}
 		})
 	}

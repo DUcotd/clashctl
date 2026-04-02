@@ -50,6 +50,7 @@ var allowedTopLevelFields = map[string]bool{
 	"external-controller": true,
 	"proxies":             true,
 	"proxy-providers":     true,
+	"rule-providers":      true,
 	"proxy-groups":        true,
 	"rules":               true,
 }

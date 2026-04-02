@@ -71,7 +71,7 @@ func TestResolveContentYAMLPlanHonorsTUNMode(t *testing.T) {
 	}
 }
 
-func TestResolveRemoteURLUsesProviderModeForProviderConfig(t *testing.T) {
+func TestResolveRemoteURLRejectsProviderOnlyConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	preparedDir := filepath.Join(tempDir, "prepared-provider")
 	if err := os.Mkdir(preparedDir, 0755); err != nil {
@@ -100,28 +100,12 @@ proxy-providers:
 	cfg := core.DefaultAppConfig()
 	cfg.SubscriptionURL = "https://example.com/sub"
 
-	plan, err := resolver.ResolveRemoteURL(cfg, cfg.SubscriptionURL, time.Second)
-	if err != nil {
-		t.Fatalf("ResolveRemoteURL() error = %v", err)
+	_, err := resolver.ResolveRemoteURL(cfg, cfg.SubscriptionURL, time.Second)
+	if err == nil {
+		t.Fatal("ResolveRemoteURL() should reject provider-only config")
 	}
-	if plan.Kind != PlanKindProvider {
-		t.Fatalf("Kind = %q", plan.Kind)
-	}
-	if len(plan.RawYAML) == 0 {
-		t.Fatalf("provider plan should render raw yaml: %#v", plan)
-	}
-	text := string(plan.RawYAML)
-	if !strings.Contains(text, "url: https://example.com/provider.yaml") {
-		t.Fatalf("provider yaml should preserve upstream url: %s", text)
-	}
-	if !strings.Contains(text, "filter: hk") {
-		t.Fatalf("provider yaml should preserve filter: %s", text)
-	}
-	if !strings.Contains(text, "proxy-groups:") || !strings.Contains(text, "- airport") {
-		t.Fatalf("provider yaml should include default PROXY group: %s", text)
-	}
-	if !strings.Contains(text, "rules:") {
-		t.Fatalf("provider yaml should include default rules: %s", text)
+	if !strings.Contains(err.Error(), "provider-only") {
+		t.Fatalf("ResolveRemoteURL() error = %v, want provider-only hint", err)
 	}
 	if _, err := os.Stat(preparedDir); !os.IsNotExist(err) {
 		t.Fatalf("prepared temp dir should be removed, stat error = %v", err)

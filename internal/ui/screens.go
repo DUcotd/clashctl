@@ -40,6 +40,7 @@ func (m WizardModel) viewSubscription() string {
 	switch m.sourceMode {
 	case SubscriptionSourceURL:
 		body += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
+		body += WarningStyle.Render("远程 provider-only 订阅会被拒绝；这类订阅请先在本地展开后再导入") + "\n\n"
 		body += m.urlInput.View()
 		footer = "←/→ 或 Tab 切换来源 │ Enter 下一步 │ Esc 退出 │ q 退出"
 	case SubscriptionSourceInline:
@@ -94,6 +95,8 @@ func (m WizardModel) viewAdvanced() string {
 		}
 	}
 
+	content += "\n" + WarningStyle.Render("控制器地址仅允许 127.0.0.1 / localhost / ::1 这类本地回环地址")
+
 	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 保存 │ Esc 放弃修改 │ q 退出")
 
 	return BoxStyle.Render(content)
@@ -114,6 +117,8 @@ func (m WizardModel) viewPreview() string {
 		formatKV("健康检查", boolToYesNo(cfg.EnableHealthCheck), width),
 		formatKV("systemd", boolToYesNo(cfg.EnableSystemd), width),
 		formatKV("自动启动", boolToYesNo(cfg.AutoStart), width),
+		"",
+		"安全约束：控制器地址仅允许本地回环；远程 provider-only 订阅会被拒绝。",
 		"",
 		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
 	}

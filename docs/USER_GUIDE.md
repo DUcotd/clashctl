@@ -25,7 +25,11 @@ sudo clashctl init
 
 默认只需要输入订阅 URL 或本地订阅文件路径。`init` 会优先把订阅转成更适合服务器使用的静态配置，尽量减少 provider 拉取失败带来的问题。
 
+出于安全原因，远程 URL 订阅如果本质上是 provider-only 配置，`init` 会拒绝直接保留其中的远程 `proxy-providers` / `rule-providers` URL。这类订阅建议先在本地下载并展开，再使用 `clashctl config import` 导入。
+
 如果选择 `mixed-port` 模式，向导会在完成后自动把 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` 以及 `NODE_USE_ENV_PROXY=1` 写入当前用户的 shell 配置文件；新开终端自动生效，当前终端执行一次 `source ~/.bashrc`（或对应 shell 配置文件）即可。
+
+高级设置中的 `controller_addr` 仅允许本地回环地址，例如 `127.0.0.1:9090`、`localhost:9090` 或 `[::1]:9090`，避免把 Mihomo Controller API 暴露到外部网络。
 
 ### clashctl service install
 安装 Mihomo 内核。
@@ -33,6 +37,8 @@ sudo clashctl init
 ```bash
 sudo clashctl service install --json
 ```
+
+默认只信任 GitHub 官方 Release 元数据；如网络环境必须依赖第三方镜像兜底，需要显式设置 `CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1`。
 
 ### clashctl config export
 导出 Mihomo 配置文件。
@@ -83,6 +89,8 @@ sudo clashctl update           # 下载并替换当前二进制
 clashctl self --dry-run        # 兼容别名，等价于 clashctl update --dry-run
 clashctl update --pre-release  # 包含预发布版本
 ```
+
+默认只信任 GitHub 官方 Release 元数据；如必须使用第三方镜像兜底，同样需要显式设置 `CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1`。
 
 ### clashctl nodes
 节点管理。
@@ -147,6 +155,8 @@ clashctl config path --json
 
 ### 订阅 URL 无法访问
 检查网络连接，确认 URL 以 http/https 开头。
+
+如果提示 provider-only 订阅被拒绝，说明远程订阅依赖运行期再次拉取 provider。请先在本地把订阅展开成静态节点，或改用 `clashctl config import -f <本地文件>` 导入。
 
 ### 服务器能启动 Mihomo，但节点没有加载出来
 这通常说明 Controller API 已启动，但服务器无法直连订阅 URL，或订阅返回的是原始节点链接而非 YAML。

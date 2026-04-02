@@ -327,6 +327,16 @@ install_mihomo() {
 
     [ -n "${mihomo_url:-}" ] || die "找不到匹配 $GOARCH 的 Mihomo 二进制"
 
+    local asset_name expected_sha
+    asset_name="$(basename "$mihomo_url")"
+    expected_sha="$(fetch_asset_sha256 "$MIHOMO_REPO" "$MIHOMO_VERSION" "$asset_name")"
+    if [ "$expected_sha" = "ERROR" ]; then
+        die "下载 Mihomo 校验和文件失败，无法验证二进制完整性"
+    fi
+    if [ -z "$expected_sha" ]; then
+        die "发布缺少 $asset_name 的 SHA256 校验值，拒绝继续安装"
+    fi
+
     mkdir -p "$INSTALL_DIR"
     info "下载 ${DIM}$(basename "$mihomo_url")${RESET}..."
 
@@ -337,10 +347,12 @@ install_mihomo() {
     if [[ "$mihomo_url" == *.gz ]]; then
         local gzfile="$mihomo_tmpfile.gz"
         download_file "$mihomo_url" "$gzfile" || { rm -f "$mihomo_tmpfile" "$gzfile"; die "Mihomo 下载失败"; }
+        verify_checksum "$gzfile" "$expected_sha" || { rm -f "$mihomo_tmpfile" "$gzfile"; die "Mihomo 下载校验失败，已删除损坏文件"; }
         gzip -d -c "$gzfile" > "$mihomo_tmpfile" || { rm -f "$mihomo_tmpfile" "$gzfile"; die "解压失败"; }
         rm -f "$gzfile"
     else
         download_file "$mihomo_url" "$mihomo_tmpfile" || { rm -f "$mihomo_tmpfile"; die "Mihomo 下载失败"; }
+        verify_checksum "$mihomo_tmpfile" "$expected_sha" || { rm -f "$mihomo_tmpfile"; die "Mihomo 下载校验失败，已删除损坏文件"; }
     fi
 
     # Verify binary works before installing

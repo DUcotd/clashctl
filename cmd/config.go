@@ -324,9 +324,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 			fmt.Printf("   节点数量: %d\n", plan.ProxyCount)
 		}
 		fmt.Printf("   模式: %s\n", cfg.Mode)
-		if plan.Kind != subscription.PlanKindProvider {
-			fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
-		}
+		fmt.Println("   说明: 这是静态配置，不依赖服务器再次拉取订阅 URL")
 	}
 
 	if importStart {

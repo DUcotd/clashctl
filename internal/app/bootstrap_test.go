@@ -137,6 +137,23 @@ func TestSaveAppConfigRejectsAbsoluteProviderPath(t *testing.T) {
 	}
 }
 
+func TestSaveAppConfigRejectsNonLoopbackControllerAddr(t *testing.T) {
+	withTempHome(t)
+
+	cfg := core.DefaultAppConfig()
+	cfg.SubscriptionURL = "https://example.com/sub"
+	cfg.ConfigDir = "/tmp/clashctl-safe"
+	cfg.ControllerAddr = "0.0.0.0:9090"
+
+	err := SaveAppConfig(cfg)
+	if err == nil {
+		t.Fatal("SaveAppConfig() should reject non-loopback controller_addr")
+	}
+	if !strings.Contains(err.Error(), "控制器地址不安全") {
+		t.Fatalf("SaveAppConfig() error = %v", err)
+	}
+}
+
 func TestLoadOrCreateAppConfigRejectsUnsafePersistedConfigDir(t *testing.T) {
 	withTempHome(t)
 
@@ -181,6 +198,30 @@ func TestLoadOrCreateAppConfigRejectsUnsafePersistedProviderPath(t *testing.T) {
 		t.Fatal("LoadOrCreateAppConfig() should reject unsafe persisted provider_path")
 	}
 	if !strings.Contains(err.Error(), "Provider 路径不安全") {
+		t.Fatalf("LoadOrCreateAppConfig() error = %v", err)
+	}
+}
+
+func TestLoadOrCreateAppConfigRejectsUnsafePersistedControllerAddr(t *testing.T) {
+	withTempHome(t)
+
+	if err := EnsureMyAppDir(); err != nil {
+		t.Fatalf("EnsureMyAppDir() error = %v", err)
+	}
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath() error = %v", err)
+	}
+	data := []byte("mode: mixed\nconfig_dir: /tmp/clashctl-safe\nprovider_path: ./providers/airport.yaml\ncontroller_addr: 0.0.0.0:9090\nmixed_port: 7890\n")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err = LoadOrCreateAppConfig()
+	if err == nil {
+		t.Fatal("LoadOrCreateAppConfig() should reject unsafe persisted controller_addr")
+	}
+	if !strings.Contains(err.Error(), "控制器地址不安全") {
 		t.Fatalf("LoadOrCreateAppConfig() error = %v", err)
 	}
 }

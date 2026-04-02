@@ -3,6 +3,8 @@ package core
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 
 	"clashctl/internal/netsec"
@@ -32,9 +34,40 @@ func (cfg *AppConfig) Validate() []string {
 
 	if strings.TrimSpace(cfg.ControllerAddr) == "" {
 		errs = append(errs, "控制器地址不能为空")
+	} else if err := ValidateControllerAddr(cfg.ControllerAddr); err != nil {
+		errs = append(errs, fmt.Sprintf("控制器地址不安全: %v", err))
 	}
 
 	return errs
+}
+
+// ValidateControllerAddr ensures the controller only binds to a local loopback address.
+func ValidateControllerAddr(addr string) error {
+	trimmed := strings.TrimSpace(addr)
+	if trimmed == "" {
+		return fmt.Errorf("控制器地址不能为空")
+	}
+
+	host, portText, err := net.SplitHostPort(trimmed)
+	if err != nil {
+		return fmt.Errorf("必须使用 host:port 格式: %w", err)
+	}
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("控制器主机不能为空")
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("控制器端口超出范围: %s", portText)
+	}
+
+	if strings.EqualFold(host, "localhost") {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("仅允许监听本地回环地址，当前: %s", host)
+	}
+	return nil
 }
 
 // validateURL checks that a string is a valid HTTP/HTTPS URL.

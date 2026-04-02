@@ -89,10 +89,10 @@ func NamedDownloads(release *GitHubRelease) []system.NamedDownload {
 
 // DownloadVerifiedGitHubAsset downloads and verifies a release asset.
 //
-// By default, third-party mirror fallback is disabled for binary/checksum
-// downloads because a mirror that serves both files can satisfy integrity
-// checks without proving authenticity. Operators who explicitly accept that
-// trade-off may set CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1.
+// By default, third-party mirror fallback is disabled for release metadata,
+// binaries, and checksums because a mirror that serves the full release chain
+// can satisfy integrity checks without proving authenticity. Operators who
+// explicitly accept that trade-off may set CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1.
 func DownloadVerifiedGitHubAsset(asset, checksumAsset system.NamedDownload, mirror MirrorFunc, destPath string) error {
 	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
 		if !system.AllowUntrustedMirrorDownloads() {
@@ -116,6 +116,9 @@ func fetchJSONWithFallback(url string, mirror MirrorFunc, dest any) error {
 	err := system.FetchJSON(url, 15*time.Second, dest)
 	if err == nil {
 		return nil
+	}
+	if !system.AllowUntrustedMirrorDownloads() {
+		return err
 	}
 	mirrorURL := mirrorURL(url, mirror)
 	if mirrorURL != url {

@@ -309,12 +309,6 @@ func (r *setupRunContext) stepResolveRemotePlan(resolver *subscription.Resolver)
 			Success: true,
 			Detail:  detail,
 		})
-	case subscription.PlanKindProvider:
-		r.addStep(ExecStep{
-			Label:   "生成 Mihomo 配置",
-			Success: true,
-			Detail:  plan.Summary,
-		})
 	}
 
 	return plan, true
@@ -387,9 +381,7 @@ func appendValidationStep(run *setupRunContext, validationErr error) {
 
 func appendWritePlanStep(run *setupRunContext, plan *subscription.ResolvedConfigPlan, result *setupflow.ApplyPlanResult) {
 	detail := "已写入 " + result.OutputPath
-	if plan.Kind != subscription.PlanKindProvider {
-		detail += "\n静态配置优先，后续无需服务器再次拉取订阅"
-	}
+	detail += "\n静态配置优先，后续无需服务器再次拉取订阅"
 	if result.BackupPath != "" {
 		detail += "\n旧配置已备份至: " + result.BackupPath
 	}

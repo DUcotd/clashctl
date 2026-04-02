@@ -67,6 +67,7 @@ func PatchRemoteYAML(data []byte, cfg *core.AppConfig) (*PatchedYAMLResult, erro
 func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[string]any, []string) {
 	patched := map[string]any{}
 	var removed []string
+	var rawRules any
 	for key, value := range doc {
 		lowerKey := strings.ToLower(key)
 		if !allowedTopLevelFields[lowerKey] {
@@ -91,6 +92,14 @@ func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[st
 			} else {
 				removed = append(removed, append([]string{key}, providerRemoved...)...)
 			}
+		case "rule-providers":
+			providers, providerRemoved := sanitizeRuleProviders(value, cfg)
+			if len(providers) > 0 {
+				patched[key] = providers
+				removed = append(removed, providerRemoved...)
+			} else {
+				removed = append(removed, append([]string{key}, providerRemoved...)...)
+			}
 		case "proxy-groups":
 			if groups := sanitizeProxyGroups(value); len(groups) > 0 {
 				patched[key] = groups
@@ -98,13 +107,19 @@ func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[st
 				removed = append(removed, key)
 			}
 		case "rules":
-			if rules := sanitizeRules(value); len(rules) > 0 {
-				patched[key] = rules
-			} else {
-				removed = append(removed, key)
-			}
+			rawRules = value
 		default:
 			patched[key] = cloneYAMLValue(value)
+		}
+	}
+
+	if rawRules != nil {
+		rules, ruleRemoved := sanitizeRules(rawRules, ruleProviderNames(patched["rule-providers"]))
+		removed = append(removed, ruleRemoved...)
+		if len(rules) > 0 {
+			patched["rules"] = rules
+		} else {
+			removed = append(removed, "rules")
 		}
 	}
 
@@ -190,7 +205,7 @@ func sanitizeProxyProvider(name string, provider map[string]any, cfg *core.AppCo
 	if !ok {
 		return nil, []string{"proxy-providers." + name + ".url"}
 	}
-	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{}); err != nil {
+	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
 		return nil, []string{"proxy-providers." + name + ".url"}
 	}
 	out["url"] = rawURL
@@ -260,23 +275,151 @@ func sanitizeProxyGroups(value any) []any {
 	return out
 }
 
-func sanitizeRules(value any) []any {
+func sanitizeRuleProviders(value any, cfg *core.AppConfig) (map[string]any, []string) {
+	providers, ok := value.(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	out := make(map[string]any, len(providers))
+	var removed []string
+	for name, entry := range providers {
+		provider, ok := entry.(map[string]any)
+		if !ok {
+			removed = append(removed, "rule-providers."+name)
+			continue
+		}
+		cleaned, providerRemoved := sanitizeRuleProvider(name, provider, cfg)
+		if len(cleaned) > 0 {
+			out[name] = cleaned
+		} else {
+			removed = append(removed, "rule-providers."+name)
+		}
+		removed = append(removed, providerRemoved...)
+	}
+	return out, dedupeStrings(removed)
+}
+
+func sanitizeRuleProvider(name string, provider map[string]any, cfg *core.AppConfig) (map[string]any, []string) {
+	out := map[string]any{}
+	var removed []string
+
+	providerType, ok := provider["type"].(string)
+	if !ok || providerType != "http" {
+		return nil, []string{"rule-providers." + name + ".type"}
+	}
+	out["type"] = providerType
+
+	behavior, ok := provider["behavior"].(string)
+	if !ok || !isSupportedRuleProviderBehavior(behavior) {
+		return nil, []string{"rule-providers." + name + ".behavior"}
+	}
+	out["behavior"] = behavior
+
+	rawURL, ok := provider["url"].(string)
+	if !ok {
+		return nil, []string{"rule-providers." + name + ".url"}
+	}
+	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
+		return nil, []string{"rule-providers." + name + ".url"}
+	}
+	out["url"] = rawURL
+
+	format := ""
+	if rawFormat, ok := provider["format"].(string); ok && strings.TrimSpace(rawFormat) != "" {
+		if isSupportedRuleProviderFormat(rawFormat) {
+			format = rawFormat
+			out["format"] = rawFormat
+		} else {
+			removed = append(removed, "rule-providers."+name+".format")
+		}
+	}
+	out["path"] = filepath.Join(cfg.ConfigDir, "rules", sanitizePathSegment(name)+ruleProviderExt(format))
+
+	if interval, ok := asPositiveInt(provider["interval"]); ok {
+		out["interval"] = interval
+	}
+
+	for key := range provider {
+		switch strings.ToLower(key) {
+		case "type", "behavior", "url", "path", "interval", "format":
+		default:
+			removed = append(removed, "rule-providers."+name+"."+key)
+		}
+	}
+
+	return out, dedupeStrings(removed)
+}
+
+func isSupportedRuleProviderBehavior(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "classical", "domain", "ipcidr":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedRuleProviderFormat(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "yaml", "text", "mrs":
+		return true
+	default:
+		return false
+	}
+}
+
+func ruleProviderExt(format string) string {
+	if strings.EqualFold(strings.TrimSpace(format), "mrs") {
+		return ".mrs"
+	}
+	return ".yaml"
+}
+
+func ruleProviderNames(value any) map[string]struct{} {
+	providers, _ := value.(map[string]any)
+	names := make(map[string]struct{}, len(providers))
+	for name := range providers {
+		names[name] = struct{}{}
+	}
+	return names
+}
+
+func sanitizeRules(value any, allowedRuleProviders map[string]struct{}) ([]any, []string) {
 	list, ok := value.([]any)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	out := make([]any, 0, len(list))
+	var removed []string
 	for _, entry := range list {
 		rule, ok := entry.(string)
 		if !ok {
 			continue
 		}
 		if strings.Contains(strings.ToLower(rule), "script") {
+			removed = append(removed, rule)
+			continue
+		}
+		if isRuleSetRuleMissingProvider(rule, allowedRuleProviders) {
+			removed = append(removed, rule)
 			continue
 		}
 		out = append(out, rule)
 	}
-	return out
+	return out, dedupeStrings(removed)
+}
+
+func isRuleSetRuleMissingProvider(rule string, allowedRuleProviders map[string]struct{}) bool {
+	parts := strings.Split(rule, ",")
+	if len(parts) < 2 || !strings.EqualFold(strings.TrimSpace(parts[0]), "RULE-SET") {
+		return false
+	}
+	name := strings.TrimSpace(parts[1])
+	if name == "" {
+		return true
+	}
+	_, ok := allowedRuleProviders[name]
+	return !ok
 }
 
 func sanitizeHealthCheck(value any, fieldPath string) (map[string]any, []string) {
@@ -290,7 +433,7 @@ func sanitizeHealthCheck(value any, fieldPath string) (map[string]any, []string)
 		out["enable"] = enabled
 	}
 	if urlValue, ok := healthCheck["url"].(string); ok {
-		if _, err := netsec.ValidateRemoteHTTPURL(urlValue, netsec.URLValidationOptions{}); err == nil {
+		if _, err := netsec.ValidateRemoteHTTPURL(urlValue, netsec.URLValidationOptions{ResolveHost: true}); err == nil {
 			out["url"] = urlValue
 		} else {
 			removed = append(removed, fieldPath+".url")

@@ -97,3 +97,10 @@ go test ./...
 - 不允许把所有逻辑写进 main.go
 - 不允许用字符串硬拼 YAML
 - 不允许省略错误处理
+
+## 安全约束
+
+- Release metadata 默认不得从第三方镜像获取；仅在显式设置 `CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1` 时允许镜像兜底
+- 下载到的可执行文件必须先校验完整性，再执行版本探测或安装验证
+- `controller_addr` 仅允许回环地址，避免把 Controller API 暴露到外部网络
+- 远程 URL 订阅不得保留 provider-only 配置中的远程 `proxy-providers` / `rule-providers` URL

@@ -32,6 +32,8 @@ var githubMirrors = []string{
 	"https://mirror.ghproxy.com/",
 }
 
+var fetchJSON = system.FetchJSON
+
 // GitHubRelease represents a GitHub release (minimal fields).
 type MihomoRelease struct {
 	TagName string `json:"tag_name"`
@@ -160,11 +162,14 @@ func fetchLatestMihomoRelease() (*MihomoRelease, error) {
 		MihomoGitHubOwner, MihomoGitHubRepo)
 
 	var release MihomoRelease
-	if err := system.FetchJSON(url, GitHubAPITimeout, &release); err != nil {
+	if err := fetchJSON(url, GitHubAPITimeout, &release); err != nil {
+		if !system.AllowUntrustedMirrorDownloads() {
+			return nil, fmt.Errorf("获取 GitHub Release 失败: %w", err)
+		}
 		// Try mirror URL if original fails
 		mirrorURL := GetGitHubMirrorURL(url)
 		if mirrorURL != url {
-			if mirrorErr := system.FetchJSON(mirrorURL, GitHubAPITimeout, &release); mirrorErr == nil {
+			if mirrorErr := fetchJSON(mirrorURL, GitHubAPITimeout, &release); mirrorErr == nil {
 				return &release, nil
 			}
 		}

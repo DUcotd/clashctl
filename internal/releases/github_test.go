@@ -1,6 +1,7 @@
 package releases
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -148,5 +149,51 @@ func TestDownloadVerifiedGitHubAssetAllowsMirrorWithExplicitOptIn(t *testing.T) 
 	}
 	if string(data) != "hello" {
 		t.Fatalf("dest content = %q, want hello", string(data))
+	}
+}
+
+func TestFetchJSONWithFallbackDoesNotUseMirrorByDefault(t *testing.T) {
+	t.Setenv("CLASHCTL_ALLOW_UNTRUSTED_MIRROR", "")
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream down", http.StatusBadGateway)
+	}))
+	defer origin.Close()
+
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(GitHubRelease{TagName: "v9.9.9"})
+	}))
+	defer mirror.Close()
+
+	var release GitHubRelease
+	err := fetchJSONWithFallback(origin.URL+"/release", func(string) string { return mirror.URL + "/release" }, &release)
+	if err == nil {
+		t.Fatal("fetchJSONWithFallback() should fail when mirror fallback is disabled")
+	}
+	if release.TagName != "" {
+		t.Fatalf("release = %#v, want zero value", release)
+	}
+}
+
+func TestFetchJSONWithFallbackAllowsMirrorWithExplicitOptIn(t *testing.T) {
+	t.Setenv("CLASHCTL_ALLOW_UNTRUSTED_MIRROR", "1")
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream down", http.StatusBadGateway)
+	}))
+	defer origin.Close()
+
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(GitHubRelease{TagName: "v9.9.9"})
+	}))
+	defer mirror.Close()
+
+	var release GitHubRelease
+	err := fetchJSONWithFallback(origin.URL+"/release", func(string) string { return mirror.URL + "/release" }, &release)
+	if err != nil {
+		t.Fatalf("fetchJSONWithFallback() error = %v", err)
+	}
+	if release.TagName != "v9.9.9" {
+		t.Fatalf("release.TagName = %q, want v9.9.9", release.TagName)
 	}
 }

@@ -143,7 +143,15 @@ clashctl nodes
 - TUN 模式需要 root 权限
 - Mihomo 会在首次使用时自动下载，也可手动安装
 - `init` 默认优先将订阅转成更适合服务器使用的静态配置，尽量避免服务器再次直连拉取 provider
+- 远程 URL 订阅如果是 provider-only 配置，当前会直接拒绝；请先在本地展开成静态节点或改用 `clashctl config import`
+- `controller_addr` 仅支持本地回环地址，例如 `127.0.0.1:9090`、`localhost:9090`、`[::1]:9090`
 - `mixed-port` 模式会在 `init` 成功后自动写入当前 shell 的代理环境配置（含 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` / `NODE_USE_ENV_PROXY=1`）；新开终端自动生效，当前终端需手动 `source` 一次
+
+## 安全说明
+
+- `clashctl update` 和 `clashctl service install` 默认只信任 GitHub 官方 Release 元数据
+- 如确需接受第三方镜像兜底，必须显式设置 `CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1`
+- 该环境变量会放宽供应链信任边界，仅建议在你明确接受风险时使用
 
 ## 配置与备份路径
 

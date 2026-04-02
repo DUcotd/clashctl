@@ -233,6 +233,60 @@ proxies:
 	}
 }
 
+func TestPatchRemoteYAMLPreservesSafeRuleProviders(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	result, err := PatchRemoteYAML([]byte(`
+rule-providers:
+  apple:
+    type: http
+    behavior: classical
+    url: https://example.com/apple.yaml
+    interval: 600
+rules:
+  - RULE-SET,apple,DIRECT
+  - MATCH,PROXY
+`), cfg)
+	if err != nil {
+		t.Fatalf("PatchRemoteYAML() error = %v", err)
+	}
+
+	text := string(result.YAML)
+	if !strings.Contains(text, "rule-providers:") {
+		t.Fatalf("patched YAML should preserve rule-providers: %s", text)
+	}
+	if !strings.Contains(text, "RULE-SET,apple,DIRECT") {
+		t.Fatalf("patched YAML should preserve RULE-SET rules: %s", text)
+	}
+	if !strings.Contains(text, filepath.ToSlash("rules/apple.yaml")) {
+		t.Fatalf("patched YAML should rewrite rule provider path, got: %s", text)
+	}
+}
+
+func TestPatchRemoteYAMLDropsRulesForRemovedRuleProviders(t *testing.T) {
+	cfg := core.DefaultAppConfig()
+	result, err := PatchRemoteYAML([]byte(`
+rule-providers:
+  local-only:
+    type: file
+    behavior: classical
+    path: ./rules.yaml
+rules:
+  - RULE-SET,local-only,DIRECT
+  - MATCH,PROXY
+`), cfg)
+	if err != nil {
+		t.Fatalf("PatchRemoteYAML() error = %v", err)
+	}
+
+	text := string(result.YAML)
+	if strings.Contains(text, "RULE-SET,local-only,DIRECT") {
+		t.Fatalf("patched YAML should drop RULE-SET for removed provider: %s", text)
+	}
+	if !strings.Contains(text, "MATCH,PROXY") {
+		t.Fatalf("patched YAML should keep unrelated rules: %s", text)
+	}
+}
+
 func TestContainsDangerousScript(t *testing.T) {
 	tests := []struct {
 		script string
