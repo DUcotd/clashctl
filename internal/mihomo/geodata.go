@@ -14,6 +14,11 @@ import (
 	"clashctl/internal/system"
 )
 
+var newGeoDataHTTPClient = func() system.HTTPDoer {
+	// Geodata is fetched before Mihomo is ready, so proxy env would create a startup loop.
+	return system.NewHTTPClient(GeoDataDownloadTimeout, true)
+}
+
 const (
 	// GeoDataDownloadTimeout is the timeout for downloading geodata files.
 	GeoDataDownloadTimeout = 60 * time.Second
@@ -76,7 +81,7 @@ func GeoDataURLMirror2(filename string) string {
 // EnsureGeoData downloads missing geodata files to configDir.
 // Returns the number of files downloaded and any error.
 func EnsureGeoData(configDir string) (*GeoDataResult, error) {
-	client := system.NewHTTPClient(GeoDataDownloadTimeout, false)
+	client := newGeoDataHTTPClient()
 	result := &GeoDataResult{}
 
 	for _, f := range DefaultGeoDataFiles() {

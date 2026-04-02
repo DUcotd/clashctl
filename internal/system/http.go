@@ -30,6 +30,7 @@ func NewHTTPClient(timeout time.Duration, direct bool) *http.Client {
 	}
 
 	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,
@@ -68,6 +69,7 @@ func NewHTTPClientWithRedirectLimit(timeout time.Duration, direct bool, maxRedir
 	}
 
 	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
 		TLSHandshakeTimeout:   timeout,
 		ResponseHeaderTimeout: timeout,

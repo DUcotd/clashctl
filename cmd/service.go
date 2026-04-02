@@ -5,10 +5,20 @@ import (
 	"os"
 	"time"
 
+	"clashctl/internal/core"
 	"github.com/spf13/cobra"
 
 	"clashctl/internal/mihomo"
 	"clashctl/internal/system"
+)
+
+var (
+	loadAppConfigFn   = loadAppConfig
+	hasSystemdFn      = mihomo.HasSystemd
+	newRuntimeManager = mihomo.NewRuntimeManager
+	startRuntimeFn    = func(runtime *mihomo.RuntimeManager, cfg *core.AppConfig, opts mihomo.StartOptions) (*mihomo.StartResult, error) {
+		return runtime.Start(cfg, opts)
+	}
 )
 
 var serviceCmd = &cobra.Command{
@@ -119,7 +129,7 @@ func finishInstallReport(report *installRunReport, err error) error {
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
-	if mihomo.HasSystemd() {
+	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务启动"); err != nil {
 			return err
 		}
@@ -127,13 +137,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("🚀 正在启动 Mihomo...")
 
-	cfg, err := loadAppConfig()
+	cfg, err := loadAppConfigFn()
 	if err != nil {
 		return err
 	}
 
-	runtime := mihomo.NewRuntimeManager()
-	result, err := runtime.Start(cfg, mihomo.StartOptions{
+	runtime := newRuntimeManager()
+	result, err := startRuntimeFn(runtime, cfg, mihomo.StartOptions{
 		VerifyInventory: true,
 		WaitRetries:     15,
 		WaitInterval:    2 * time.Second,
@@ -146,19 +156,19 @@ func runStart(cmd *cobra.Command, args []string) error {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	if mihomo.HasSystemd() {
+	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务停止"); err != nil {
 			return err
 		}
 	}
 
 	fmt.Println("🛑 正在停止 Mihomo...")
-	cfg, err := loadAppConfig()
+	cfg, err := loadAppConfigFn()
 	if err != nil {
 		return err
 	}
 
-	if mihomo.HasSystemd() {
+	if hasSystemdFn() {
 		if err := mihomo.StopService(mihomo.DefaultServiceName); err == nil {
 			fmt.Println("✅ 已通过 systemd 停止")
 			return nil
@@ -179,36 +189,27 @@ func runStop(cmd *cobra.Command, args []string) error {
 }
 
 func runRestart(cmd *cobra.Command, args []string) error {
-	if mihomo.HasSystemd() {
+	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务重启"); err != nil {
 			return err
 		}
 	}
 
 	fmt.Println("🔄 正在重启 Mihomo...")
-	cfg, err := loadAppConfig()
+	cfg, err := loadAppConfigFn()
 	if err != nil {
 		return err
 	}
 
-	if mihomo.HasSystemd() {
-		if err := mihomo.RestartService(mihomo.DefaultServiceName); err == nil {
-			fmt.Println("✅ Mihomo 已重启")
-			return nil
-		} else {
-			fmt.Printf("⚠️  systemd 重启失败: %v\n正在回退到进程模式...\n", err)
-		}
-	}
-
-	if _, err := mihomo.StopManagedProcess(cfg.ConfigDir); err != nil {
+	runtime := newRuntimeManager()
+	result, err := startRuntimeFn(runtime, cfg, mihomo.StartOptions{
+		VerifyInventory: true,
+		WaitRetries:     15,
+		WaitInterval:    2 * time.Second,
+	})
+	printRuntimeStartResult(os.Stdout, result)
+	if err != nil {
 		return fmt.Errorf("重启失败: %w", err)
 	}
-
-	proc := mihomo.NewProcess(cfg.ConfigDir)
-	if err := proc.Start(); err != nil {
-		return fmt.Errorf("重启失败: %w", err)
-	}
-
-	fmt.Println("✅ Mihomo 已重启")
 	return nil
 }
