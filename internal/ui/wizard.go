@@ -59,6 +59,7 @@ type WizardModel struct {
 	spinner             spinner.Model
 	setupService        SetupService
 	nodeService         NodeService
+	feedback            pageFeedbackState
 	subscriptionState
 	advancedState
 	executionViewState
@@ -223,7 +224,7 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == "ctrl+c" {
+	if isQuitKey(msg) {
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -267,6 +268,7 @@ func (m *WizardModel) setScreen(screen Screen) {
 	if m.vpReady {
 		m.screenOffsets[m.screen] = m.vp.YOffset
 	}
+	m.feedback.clear()
 	m.screen = screen
 	if m.vpReady {
 		m.ensureViewport()
@@ -316,29 +318,25 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "left", "shift+tab":
 		m.setSubscriptionSource((m.sourceMode + 2) % 3)
+		m.feedback.clear()
 		return m, nil
 	case "right", "tab":
 		m.setSubscriptionSource((m.sourceMode + 1) % 3)
+		m.feedback.clear()
 		return m, nil
-	case "enter":
+	case "shift+enter":
 		if m.sourceMode == SubscriptionSourceInline {
 			var cmd tea.Cmd
 			m.inlineInput, cmd = m.inlineInput.Update(msg)
 			return m, cmd
 		}
-		if !m.commitSubscriptionSelection() {
+	case "enter":
+		if err := m.commitSubscriptionSelection(); err != "" {
+			m.feedback.setError(err)
 			return m, nil
 		}
 		m.setScreen(ScreenMode)
 		return m, nil
-	case "ctrl+s":
-		if m.sourceMode == SubscriptionSourceInline {
-			if !m.commitSubscriptionSelection() {
-				return m, nil
-			}
-			m.setScreen(ScreenMode)
-			return m, nil
-		}
 	case "esc":
 		m.quitting = true
 		return m, tea.Quit
@@ -368,6 +366,7 @@ func (m *WizardModel) focusSubscriptionInput() {
 }
 
 func (m *WizardModel) updateSubscriptionInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.feedback.clear()
 	switch m.sourceMode {
 	case SubscriptionSourceURL:
 		var cmd tea.Cmd
@@ -386,7 +385,7 @@ func (m *WizardModel) updateSubscriptionInput(msg tea.KeyMsg) (tea.Model, tea.Cm
 	}
 }
 
-func (m *WizardModel) commitSubscriptionSelection() bool {
+func (m *WizardModel) commitSubscriptionSelection() string {
 	m.appCfg.SubscriptionURL = ""
 	m.localImportPath = ""
 	m.inlineContent = ""
@@ -395,26 +394,26 @@ func (m *WizardModel) commitSubscriptionSelection() bool {
 	case SubscriptionSourceURL:
 		input := strings.TrimSpace(m.urlInput.Value())
 		if input == "" {
-			return false
+			return "请输入订阅 URL 或本地路径"
 		}
 		m.appCfg.SubscriptionURL = input
-		return true
+		return ""
 	case SubscriptionSourceFile:
 		input := strings.TrimSpace(m.fileInput.Value())
 		if input == "" {
-			return false
+			return "请输入本地订阅文件路径"
 		}
 		m.localImportPath = input
-		return true
+		return ""
 	case SubscriptionSourceInline:
 		input := strings.TrimSpace(m.inlineInput.Value())
 		if input == "" {
-			return false
+			return "请粘贴订阅内容后再继续"
 		}
 		m.inlineContent = input
-		return true
+		return ""
 	default:
-		return false
+		return "请选择订阅来源"
 	}
 }
 
@@ -437,6 +436,8 @@ func (m WizardModel) updateMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "a":
 		m.applyModeSelection()
+		m.resetAdvancedInputsFromConfig()
+		m.focusAdvancedInput()
 		m.setScreen(ScreenAdvanced)
 		return m, nil
 	case "esc":
@@ -452,15 +453,20 @@ func (m WizardModel) updateAdvanced(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.advancedIndex > 0 {
 			m.advancedIndex--
 		}
+		m.focusAdvancedInput()
 	case "down", "j":
 		if m.advancedIndex < len(m.advancedFields)-1 {
 			m.advancedIndex++
 		}
+		m.focusAdvancedInput()
 	case "enter":
 		m.collectAdvancedValues()
+		m.blurAdvancedInputs()
 		m.setScreen(ScreenPreview)
 		return m, nil
 	case "esc":
+		m.resetAdvancedInputsFromConfig()
+		m.blurAdvancedInputs()
 		m.setScreen(ScreenPreview)
 		return m, nil
 	default:
@@ -498,6 +504,43 @@ func (m *WizardModel) collectAdvancedValues() {
 	}
 }
 
+func (m *WizardModel) resetAdvancedInputsFromConfig() {
+	for i, field := range m.advancedFields {
+		switch field {
+		case "配置目录":
+			m.advancedInputs[i].SetValue(m.appCfg.ConfigDir)
+		case "控制器地址":
+			m.advancedInputs[i].SetValue(m.appCfg.ControllerAddr)
+		case "mixed-port":
+			m.advancedInputs[i].SetValue(fmt.Sprintf("%d", m.appCfg.MixedPort))
+		case "Provider 路径":
+			m.advancedInputs[i].SetValue(m.appCfg.ProviderPath)
+		case "健康检查":
+			m.advancedInputs[i].SetValue(boolToYesNo(m.appCfg.EnableHealthCheck))
+		case "systemd 服务":
+			m.advancedInputs[i].SetValue(boolToYesNo(m.appCfg.EnableSystemd))
+		case "自动启动":
+			m.advancedInputs[i].SetValue(boolToYesNo(m.appCfg.AutoStart))
+		}
+	}
+}
+
+func (m *WizardModel) focusAdvancedInput() {
+	for i := range m.advancedInputs {
+		if i == m.advancedIndex {
+			m.advancedInputs[i].Focus()
+			continue
+		}
+		m.advancedInputs[i].Blur()
+	}
+}
+
+func (m *WizardModel) blurAdvancedInputs() {
+	for i := range m.advancedInputs {
+		m.advancedInputs[i].Blur()
+	}
+}
+
 func (m *WizardModel) applyModeSelection() {
 	if m.modeIndex == 0 {
 		m.appCfg.Mode = "tun"
@@ -512,6 +555,8 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scrollViewport(msg.String())
 		return m, nil
 	case "a":
+		m.resetAdvancedInputsFromConfig()
+		m.focusAdvancedInput()
 		m.setScreen(ScreenAdvanced)
 		return m, nil
 	case "enter":
@@ -521,6 +566,7 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.currentStep = ""
 		m.canImportFallback = false
 		m.importHint = ""
+		m.feedback.clear()
 		if strings.TrimSpace(m.localImportPath) != "" {
 			stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), m.localImportPath)
 			m.setupStream = stream
@@ -535,7 +581,7 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setupStream = stream
 		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 	case "esc":
-		m.setScreen(ScreenAdvanced)
+		m.setScreen(ScreenMode)
 		return m, nil
 	}
 	return m, nil
@@ -580,7 +626,7 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
 		m.scrollViewport(msg.String())
 		return m, nil
-	case "enter", "q", "n":
+	case "enter", "n":
 		if m.controllerAvailable {
 			manager := newNodeManagerWithService(cloneAppConfig(m.appCfg), m.nodeService, true)
 			manager.width = m.width
@@ -590,17 +636,14 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return manager, tea.Batch(manager.spinner.Tick, manager.loadGroups())
 		}
-		m.quitting = true
-		return m, tea.Quit
-	case "i":
 		if m.canImportFallback {
 			m.importInput.Focus()
 			m.setScreen(ScreenImportLocal)
 			return m, nil
 		}
 	case "esc":
-		m.quitting = true
-		return m, tea.Quit
+		m.setScreen(ScreenPreview)
+		return m, nil
 	}
 	return m, nil
 }
@@ -631,6 +674,7 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		path := strings.TrimSpace(m.importInput.Value())
 		if path == "" {
+			m.feedback.setError("请输入本地订阅文件路径")
 			return m, nil
 		}
 		m.setScreen(ScreenExecution)
@@ -638,6 +682,7 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.execSteps = nil
 		m.currentStep = ""
 		m.importInput.Blur()
+		m.feedback.clear()
 		stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), path)
 		m.setupStream = stream
 		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
@@ -646,6 +691,7 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setScreen(ScreenResult)
 		return m, nil
 	default:
+		m.feedback.clear()
 		var cmd tea.Cmd
 		m.importInput, cmd = m.importInput.Update(msg)
 		return m, cmd

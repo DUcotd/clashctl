@@ -34,26 +34,27 @@ func (m WizardModel) viewSubscription() string {
 	m.inlineInput.SetHeight(8)
 
 	selector := renderSourceSelector(m.sourceMode)
-	content := HeaderStyle.Render("选择订阅来源") + "\n\n" + selector + "\n\n"
+	body := selector + "\n\n"
+	footer := ""
 
 	switch m.sourceMode {
 	case SubscriptionSourceURL:
-		content += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
-		content += m.urlInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 退出")
+		body += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
+		body += m.urlInput.View()
+		footer = "←/→ 或 Tab 切换来源 │ Enter 下一步 │ Esc 退出 │ q 退出"
 	case SubscriptionSourceInline:
-		content += InfoStyle.Render("可直接粘贴 Base64、原始节点链接列表或 Mihomo/Clash YAML") + "\n"
-		content += InfoStyle.Render("多行内容请在这里完整粘贴；使用 Ctrl+S 继续下一步") + "\n\n"
-		content += m.inlineInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Ctrl+S 下一步 │ Esc 退出")
+		body += InfoStyle.Render("可直接粘贴 Base64、原始节点链接列表或 Mihomo/Clash YAML") + "\n"
+		body += InfoStyle.Render("Enter 提交；终端支持时可用 Shift+Enter 手动换行，多行粘贴也可直接使用") + "\n\n"
+		body += m.inlineInput.View()
+		footer = "←/→ 或 Tab 切换来源 │ Enter 提交 │ Shift+Enter 换行 │ Esc 退出 │ q 退出"
 	case SubscriptionSourceFile:
-		content += InfoStyle.Render("适合服务器无法直连订阅时使用本地文件导入") + "\n"
-		content += InfoStyle.Render("支持 Base64 原始订阅、解码后的节点链接列表或 YAML 文件") + "\n\n"
-		content += m.fileInput.View() + "\n\n"
-		content += HelpStyle.Render("←/→ 切换来源 │ Enter 下一步 │ Esc 退出")
+		body += InfoStyle.Render("适合服务器无法直连订阅时使用本地文件导入") + "\n"
+		body += InfoStyle.Render("支持 Base64 原始订阅、解码后的节点链接列表或 YAML 文件") + "\n\n"
+		body += m.fileInput.View()
+		footer = "←/→ 或 Tab 切换来源 │ Enter 下一步 │ Esc 退出 │ q 退出"
 	}
 
-	return BoxStyle.Render(content)
+	return m.renderStaticCard("选择订阅来源", body, footer)
 }
 
 func (m WizardModel) viewMode() string {
@@ -77,7 +78,7 @@ func (m WizardModel) viewMode() string {
 		lines = append(lines, "", WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用"))
 	}
 
-	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ Enter 快速继续 │ a 高级设置 │ Esc 返回")
+	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ Enter 继续 │ a 高级设置 │ Esc 返回 │ q 退出")
 }
 
 func (m WizardModel) viewAdvanced() string {
@@ -93,7 +94,7 @@ func (m WizardModel) viewAdvanced() string {
 		}
 	}
 
-	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 保存并返回 │ Esc 放弃修改")
+	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 保存 │ Esc 放弃修改 │ q 退出")
 
 	return BoxStyle.Render(content)
 }
@@ -116,7 +117,7 @@ func (m WizardModel) viewPreview() string {
 		"",
 		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
 	}
-	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 开始配置 │ a 高级设置 │ Esc 返回模式选择")
+	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 开始配置 │ a 高级设置 │ Esc 返回 │ q 退出")
 }
 
 func renderSourceSelector(current SubscriptionSource) string {
@@ -188,7 +189,7 @@ func (m WizardModel) viewExecution() string {
 	content += InfoStyle.Render("  • 启动 Mihomo 服务") + "\n"
 	content += InfoStyle.Render("  • 等待 Controller API 就绪")
 
-	return m.renderScrollablePage("正在配置 Mihomo...", content, "请稍候...")
+	return m.renderScrollablePage("正在配置 Mihomo...", content, "请稍候... │ q 退出")
 }
 
 func (m WizardModel) viewResult() string {
@@ -221,20 +222,24 @@ func (m WizardModel) viewResult() string {
 		body.WriteString("\n")
 	}
 
-	footer := "↑/↓ 滚动 │ Enter 继续 │ Esc 退出"
+	footer := "↑/↓ 滚动 │ Esc 返回 │ q 退出"
 	if m.controllerAvailable {
 		body.WriteString("\n")
 		body.WriteString(InfoStyle.Render("Controller API 可用，可以管理节点。"))
 		body.WriteString("\n")
-		footer = "↑/↓ 滚动 │ Enter/n 进入节点管理 │ Esc 退出"
+		footer = "↑/↓ 滚动 │ Enter 进入节点管理 │ Esc 返回 │ q 退出"
 	} else {
 		if m.canImportFallback {
 			body.WriteString("\n")
 			body.WriteString(WarningStyle.Render("检测到订阅未成功加载，可切换为本地导入。"))
 			body.WriteString("\n")
+			if strings.TrimSpace(m.importHint) != "" {
+				body.WriteString(InfoStyle.Render(m.importHint))
+				body.WriteString("\n")
+			}
 			body.WriteString(InfoStyle.Render("先在本地下载/解码订阅文件，再输入文件路径。"))
 			body.WriteString("\n")
-			footer = "↑/↓ 滚动 │ i 导入本地订阅文件 │ Enter/Esc 退出"
+			footer = "↑/↓ 滚动 │ Enter 导入本地订阅 │ Esc 返回 │ q 退出"
 			return m.renderScrollablePage("执行结果", body.String(), footer)
 		}
 		body.WriteString("\n")
@@ -254,71 +259,19 @@ func (m WizardModel) viewImportLocal() string {
 		"",
 		TextStyle.Render("文件路径: ") + m.importInput.View(),
 	}, "\n")
-	return m.renderStaticCard("导入本地订阅文件", content, "Enter 开始导入 │ Esc 返回结果页")
+	return m.renderStaticCard("导入本地订阅文件", content, "Enter 开始导入 │ Esc 返回结果页 │ q 退出")
 }
 
 func (m WizardModel) renderStaticCard(header, body, footer string) string {
-	content := HeaderStyle.Render(header) + "\n\n" + body
-	if footer != "" {
-		content += "\n\n" + HelpStyle.Render(footer)
-	}
-	return BoxStyle.Render(content)
+	return renderCard(header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderScrollablePage(header, body, footer string) string {
-	if !m.vpReady {
-		return m.renderStaticCard(header, body, footer)
-	}
-	innerWidth, innerHeight := m.baseViewportSize()
-	vp := m.vp
-	vp.Width = innerWidth
-	headerBlock := HeaderStyle.Render(header)
-	footerBlock := HelpStyle.Render(footer)
-	contentHeight := max(5, innerHeight-lineCount(headerBlock)-lineCount(footerBlock)-2)
-	vp.Height = contentHeight
-	vp.SetContent(body)
-	if off, ok := m.screenOffsets[m.screen]; ok {
-		vp.SetYOffset(off)
-	}
-	scrollHint := ""
-	if vp.TotalLineCount() > vp.Height {
-		scrollHint = InfoStyle.Render(fmt.Sprintf("位置 %d/%d", min(vp.YOffset+vp.Height, vp.TotalLineCount()), vp.TotalLineCount())) + "\n"
-	}
-	content := headerBlock + "\n\n" + vp.View()
-	if footer != "" {
-		content += "\n" + scrollHint + footerBlock
-	}
-	return BoxStyle.Render(content)
+	return renderScrollableCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderSelectablePage(header, body, footer string, selectedIndex int) string {
-	if !m.vpReady {
-		return m.renderStaticCard(header, body, footer)
-	}
-	innerWidth, innerHeight := m.baseViewportSize()
-	vp := m.vp
-	vp.Width = innerWidth
-	headerBlock := HeaderStyle.Render(header)
-	footerBlock := HelpStyle.Render(footer)
-	contentHeight := max(5, innerHeight-lineCount(headerBlock)-lineCount(footerBlock)-2)
-	vp.Height = contentHeight
-	vp.SetContent(body)
-	if selectedIndex < vp.YOffset {
-		vp.SetYOffset(selectedIndex)
-	} else if selectedIndex >= vp.YOffset+vp.Height {
-		vp.SetYOffset(selectedIndex - vp.Height + 1)
-	} else if off, ok := m.screenOffsets[m.screen]; ok {
-		vp.SetYOffset(off)
-	}
-	scrollHint := ""
-	if vp.TotalLineCount() > vp.Height {
-		scrollHint = InfoStyle.Render(fmt.Sprintf("位置 %d/%d", min(vp.YOffset+vp.Height, vp.TotalLineCount()), vp.TotalLineCount())) + "\n"
-	}
-	content := headerBlock + "\n\n" + vp.View()
-	if footer != "" {
-		content += "\n" + scrollHint + footerBlock
-	}
-	return BoxStyle.Render(content)
+	return renderSelectableCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
 }
 
 func lineCount(s string) int {

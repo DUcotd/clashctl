@@ -19,9 +19,7 @@ type nodeInteractionState struct {
 	selectedGroup string
 	loading       bool
 	loadingMsg    string
-	switchResult  string
 	testing       bool
-	loadError     string
 	testDone      int
 	testTotal     int
 	testStream    <-chan nodeTestProgressMsg
@@ -39,6 +37,7 @@ type NodeManagerModel struct {
 
 	spinner     spinner.Model
 	nodeService NodeService
+	feedback    pageFeedbackState
 	nodeInteractionState
 	viewportState
 }
@@ -118,7 +117,7 @@ func (m NodeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m NodeManagerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.String() == "ctrl+c" {
+	if isQuitKey(msg) {
 		m.quitting = true
 		return m, tea.Quit
 	}
@@ -150,6 +149,7 @@ func (m *NodeManagerModel) setScreen(screen Screen) {
 	if m.vpReady {
 		m.screenOffsets[m.screen] = m.vp.YOffset
 	}
+	m.feedback.clear()
 	m.screen = screen
 	if m.vpReady {
 		m.ensureViewport()
@@ -216,14 +216,14 @@ func (m NodeManagerModel) updateGroupSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 			m.selectedGroup = m.groups[m.groupIndex].Name
 			m.loading = true
 			m.loadingMsg = "正在加载节点..."
-			m.loadError = ""
+			m.feedback.clear()
 			m.nodeIndex = 0
 			return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 		}
 	case "r":
 		m.loading = true
 		m.loadingMsg = "正在刷新代理组..."
-		m.loadError = ""
+		m.feedback.clear()
 		return m, tea.Batch(m.spinner.Tick, m.loadGroups())
 	case "esc":
 		m.quitting = true
@@ -265,6 +265,7 @@ func (m NodeManagerModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			nodeName := m.nodes[m.nodeIndex].Name
 			m.loading = true
 			m.loadingMsg = "正在切换节点..."
+			m.feedback.clear()
 			return m, tea.Batch(m.spinner.Tick, m.switchNode(m.selectedGroup, nodeName))
 		}
 	case "t":
@@ -272,8 +273,7 @@ func (m NodeManagerModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			m.testing = true
 			m.testDone = 0
 			m.testTotal = len(m.nodes)
-			m.loadError = ""
-			m.switchResult = ""
+			m.feedback.clear()
 			stream := m.nodeService.StartNodeTest(m.appCfg.ControllerAddr, m.selectedGroup, append([]NodeItem(nil), m.nodes...), 10)
 			m.testStream = stream
 			return m, tea.Batch(m.spinner.Tick, waitForNodeTestProgress(stream))
@@ -281,11 +281,10 @@ func (m NodeManagerModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 	case "r":
 		m.loading = true
 		m.loadingMsg = "正在刷新节点..."
-		m.loadError = ""
+		m.feedback.clear()
 		return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
 	case "esc":
 		m.setScreen(ScreenGroupSelect)
-		m.switchResult = ""
 		return m, nil
 	}
 	return m, nil
@@ -340,10 +339,10 @@ func (m NodeManagerModel) switchNode(groupName, nodeName string) tea.Cmd {
 func (m NodeManagerModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != "" {
-		m.loadError = "加载代理组失败: " + msg.err
+		m.feedback.setError("加载代理组失败: " + msg.err)
 		return m, nil
 	}
-	m.loadError = ""
+	m.feedback.clear()
 	m.groups = msg.groups
 	m.groupIndex = 0
 	return m, nil
@@ -352,10 +351,10 @@ func (m NodeManagerModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, te
 func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.err != "" {
-		m.loadError = "加载节点失败: " + msg.err
+		m.feedback.setError("加载节点失败: " + msg.err)
 		return m, nil
 	}
-	m.loadError = ""
+	m.feedback.clear()
 	m.nodes = msg.nodes
 	m.nodeIndex = 0
 	for i, node := range m.nodes {
@@ -371,13 +370,12 @@ func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.
 func (m NodeManagerModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.success {
-		m.loadError = ""
-		m.switchResult = "✅ 节点切换成功！"
+		m.feedback.setSuccess("✅ 节点切换成功")
 		for i := range m.nodes {
 			m.nodes[i].Selected = (i == m.nodeIndex)
 		}
 	} else {
-		m.switchResult = "❌ 切换失败: " + msg.err
+		m.feedback.setError("切换失败: " + msg.err)
 	}
 	return m, nil
 }
@@ -386,8 +384,7 @@ func (m NodeManagerModel) handleNodeTestProgress(msg nodeTestProgressMsg) (tea.M
 	if msg.err != "" {
 		m.testing = false
 		m.testStream = nil
-		m.loadError = "测速失败: " + msg.err
-		m.switchResult = ""
+		m.feedback.setError("测速失败: " + msg.err)
 		return m, nil
 	}
 	if msg.index >= 0 && msg.index < len(m.nodes) {
@@ -402,8 +399,7 @@ func (m NodeManagerModel) handleNodeTestProgress(msg nodeTestProgressMsg) (tea.M
 	if msg.done {
 		m.testing = false
 		m.testStream = nil
-		m.loadError = ""
-		m.switchResult = fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", m.testDone)
+		m.feedback.setSuccess(fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", m.testDone))
 		return m, nil
 	}
 	if m.testStream != nil {

@@ -159,6 +159,49 @@ func TestStandaloneNodeManagerViewUsesNodeTitle(t *testing.T) {
 	}
 }
 
+func TestNodeManagerEscReturnsToGroupSelect(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+	manager.screen = ScreenNodeSelect
+	manager.loading = false
+	manager.selectedGroup = "PROXY"
+	manager.nodes = []NodeItem{{Name: "Node A"}}
+
+	updated, _ := manager.updateNodeSelect(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(NodeManagerModel)
+	if got.screen != ScreenGroupSelect {
+		t.Fatalf("screen = %v, want ScreenGroupSelect", got.screen)
+	}
+}
+
+func TestNodeManagerQQuits(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+
+	updated, cmd := manager.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(NodeManagerModel)
+	if !got.quitting {
+		t.Fatal("quitting should be true")
+	}
+	if cmd == nil {
+		t.Fatal("quit command should be returned")
+	}
+}
+
+func TestNodeManagerSwitchSuccessSetsSuccessFeedback(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+	manager.screen = ScreenNodeSelect
+	manager.nodes = []NodeItem{{Name: "Node A"}, {Name: "Node B"}}
+	manager.nodeIndex = 1
+
+	updated, _ := manager.handleNodeSwitched(nodeSwitchedMsg{success: true})
+	got := updated.(NodeManagerModel)
+	if got.feedback.messageText == "" {
+		t.Fatal("success feedback should be set")
+	}
+	if !got.nodes[1].Selected {
+		t.Fatal("selected node should be updated")
+	}
+}
+
 func TestWizardCompleted(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 	if wizard.Completed() {
@@ -268,6 +311,9 @@ func TestAdvancedEscDiscardsDraftChanges(t *testing.T) {
 	if got.appCfg.ConfigDir != "/etc/mihomo" {
 		t.Fatalf("ConfigDir = %q, want original value", got.appCfg.ConfigDir)
 	}
+	if got.advancedInputs[0].Value() != "/etc/mihomo" {
+		t.Fatalf("advanced input = %q, want reset to committed value", got.advancedInputs[0].Value())
+	}
 }
 
 func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
@@ -289,13 +335,13 @@ func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCtrlSUsesInlineContent(t *testing.T) {
+func TestSubscriptionEnterUsesInlineContent(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 	wizard.screen = ScreenSubscription
 	wizard.setSubscriptionSource(SubscriptionSourceInline)
 	wizard.inlineInput.SetValue("vless://abc@example.com:443?security=tls#NodeA")
 
-	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyCtrlS})
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
 	if got.screen != ScreenMode {
 		t.Fatalf("screen = %v, want ScreenMode", got.screen)
@@ -305,6 +351,20 @@ func TestSubscriptionCtrlSUsesInlineContent(t *testing.T) {
 	}
 	if got.appCfg.SubscriptionURL != "" || got.localImportPath != "" {
 		t.Fatalf("unexpected alternate source state: url=%q file=%q", got.appCfg.SubscriptionURL, got.localImportPath)
+	}
+}
+
+func TestSubscriptionEnterWithEmptyInputShowsInlineError(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenSubscription
+
+	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(WizardModel)
+	if got.screen != ScreenSubscription {
+		t.Fatalf("screen = %v, want ScreenSubscription", got.screen)
+	}
+	if got.feedback.errorText == "" {
+		t.Fatal("expected validation error on empty subscription input")
 	}
 }
 
@@ -339,6 +399,43 @@ func TestSetupProgressDoneCarriesImportFallbackState(t *testing.T) {
 	}
 	if !got.Completed() {
 		t.Fatal("wizard should be marked completed after done progress")
+	}
+}
+
+func TestResultEnterOpensImportFallback(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenResult
+	wizard.canImportFallback = true
+
+	updated, _ := wizard.updateResult(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(WizardModel)
+	if got.screen != ScreenImportLocal {
+		t.Fatalf("screen = %v, want ScreenImportLocal", got.screen)
+	}
+}
+
+func TestResultEscReturnsToPreview(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenResult
+
+	updated, _ := wizard.updateResult(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(WizardModel)
+	if got.screen != ScreenPreview {
+		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	}
+}
+
+func TestImportLocalEmptyPathShowsError(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = ScreenImportLocal
+
+	updated, _ := wizard.updateImportLocal(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(WizardModel)
+	if got.screen != ScreenImportLocal {
+		t.Fatalf("screen = %v, want ScreenImportLocal", got.screen)
+	}
+	if got.feedback.errorText == "" {
+		t.Fatal("expected validation error on empty import path")
 	}
 }
 
