@@ -3,6 +3,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 type feedbackTone int
@@ -83,6 +85,20 @@ func renderCard(header string, feedback pageFeedbackState, body, footer string) 
 		content += "\n\n" + HelpStyle.Render(footer)
 	}
 	return BoxStyle.Render(content)
+}
+
+func renderCardWithStyle(header string, feedback pageFeedbackState, body, footer string, boxStyle lipgloss.Style) string {
+	content := HeaderStyle.Render(header)
+	if block := feedbackBlock(feedback); block != "" {
+		content += "\n\n" + block
+	}
+	if body != "" {
+		content += "\n\n" + body
+	}
+	if footer != "" {
+		content += "\n\n" + HelpStyle.Render(footer)
+	}
+	return boxStyle.Render(content)
 }
 
 const minViewportContentHeight = 5
@@ -173,4 +189,55 @@ func cardChromeHeight(header string, feedback pageFeedbackState, footer string, 
 	h += 2
 	h += extraLines
 	return h
+}
+
+func renderKeyBinding(key, desc string) string {
+	return KeyStyle.Render(key) + KeySepStyle.Render(" ") + desc
+}
+
+func renderKeyHelp(pairs [][2]string) string {
+	parts := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		parts = append(parts, renderKeyBinding(p[0], p[1]))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func renderProgressBar(done, total int, maxWidth int) string {
+	if total <= 0 {
+		return ""
+	}
+	pct := float64(done) / float64(total)
+	barWidth := max(10, min(maxWidth, 40))
+	filled := int(pct * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+	return ProgressBarFullStyle.Render(bar) + ProgressTextStyle.Render(fmt.Sprintf(" %d/%d (%.0f%%)", done, total, pct*100))
+}
+
+func renderStepDots(total, current int) string {
+	parts := make([]string, 0, total)
+	for i := 0; i < total; i++ {
+		if i < current {
+			parts = append(parts, StepDotDoneStyle.Render("●"))
+		} else if i == current {
+			parts = append(parts, StepDotActiveStyle.Render("●"))
+		} else {
+			parts = append(parts, StepDotInactiveStyle.Render("○"))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func renderHeaderBar(title string) string {
+	return HeaderBarStyle.Render(title)
+}
+
+func renderSeparator(width int) string {
+	if width <= 0 {
+		return SeparatorStyle.Render("─")
+	}
+	return SeparatorStyle.Render(strings.Repeat("─", width))
 }

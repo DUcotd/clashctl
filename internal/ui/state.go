@@ -2,6 +2,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/viewport"
 )
 
@@ -54,6 +56,53 @@ func (s Screen) topChrome() int {
 		return 4
 	}
 	return 6
+}
+
+func (s Screen) StepIndex() int {
+	switch s {
+	case ScreenWelcome:
+		return 0
+	case ScreenSubscription:
+		return 1
+	case ScreenMode:
+		return 2
+	case ScreenAdvanced:
+		return 3
+	case ScreenPreview:
+		return 4
+	case ScreenExecution:
+		return 5
+	case ScreenResult:
+		return 6
+	case ScreenImportLocal:
+		return 7
+	case ScreenGroupSelect:
+		return 8
+	case ScreenNodeSelect:
+		return 9
+	default:
+		return 0
+	}
+}
+
+func (s Screen) TotalSteps() int {
+	return 10
+}
+
+func (s Screen) StepDots() string {
+	idx := s.StepIndex()
+	total := s.TotalSteps()
+	parts := make([]string, 0, total)
+	for i := 0; i < total; i++ {
+		if i < idx {
+			parts = append(parts, StepDotDoneStyle.Render("●"))
+		} else if i == idx {
+			parts = append(parts, StepDotActiveStyle.Render("●"))
+		} else {
+			parts = append(parts, StepDotInactiveStyle.Render("○"))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 const (

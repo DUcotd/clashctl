@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -47,6 +48,8 @@ type nodeInteractionState struct {
 	showNodeDetail  bool
 	detailNodeIndex int
 	quitConfirm     bool
+
+	lastMouseClick time.Time
 }
 
 // NodeManagerModel is the standalone node management TUI state.
@@ -185,6 +188,13 @@ func (m NodeManagerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.testing {
 			m.testing = false
 			m.testStream = nil
+			m.feedback.setInfo("已取消延迟测试")
+			return m, nil
+		}
+		if m.loading && m.screen == ScreenNodeSelect {
+			m.loading = false
+			m.feedback.setInfo("已取消加载")
+			return m, nil
 		}
 		if m.screen == ScreenGroupSelect {
 			m.quitConfirm = true
@@ -291,12 +301,24 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 	}
 	chromeHeight := cardChromeHeight(headerText, m.feedback, footer, extraLines)
 
+	now := time.Now()
+	isDoubleClick := now.Sub(m.lastMouseClick) < 300*time.Millisecond
+	m.lastMouseClick = now
+
 	if m.screen == ScreenGroupSelect && !m.loading {
 		yOffset := m.vp.YOffset
 		idx := msg.Y - chromeHeight + yOffset
 		displayGroups := m.getDisplayGroups()
 		if idx >= 0 && idx < len(displayGroups) {
 			m.groupIndex = idx
+			if isDoubleClick {
+				m.selectedGroup = displayGroups[m.groupIndex].Name
+				m.loading = true
+				m.loadingMsg = "正在加载节点..."
+				m.feedback.clear()
+				m.nodeIndex = 0
+				return m, tea.Batch(m.spinner.Tick, m.loadNodes(m.selectedGroup))
+			}
 		}
 		return m, nil
 	}
@@ -307,6 +329,12 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 		idx := msg.Y - chromeHeight + yOffset
 		if idx >= 0 && idx < len(displayNodes) {
 			m.nodeIndex = idx
+			if isDoubleClick {
+				nodeName := displayNodes[m.nodeIndex].Name
+				m.confirmAction = ConfirmSwitchNode
+				m.confirmTarget = nodeName
+				return m, nil
+			}
 		}
 		return m, nil
 	}
@@ -316,12 +344,21 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 
 func (m NodeManagerModel) handleSearchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "enter", "esc":
+	case "enter":
 		m.searchInput.Blur()
 		if m.searchQuery != m.searchInput.Value() {
 			m.searchQuery = m.searchInput.Value()
 			m.applyFilter()
 		}
+		return m, nil
+	case "esc":
+		if m.searchQuery != "" {
+			m.searchQuery = ""
+			m.searchInput.SetValue("")
+			m.filteredNodes = nil
+			m.nodeIndex = 0
+		}
+		m.searchInput.Blur()
 		return m, nil
 	default:
 		var cmd tea.Cmd
@@ -398,15 +435,18 @@ func (m *NodeManagerModel) cycleSortMode() {
 		if m.searchQuery != "" {
 			m.applyFilter()
 		}
+		m.feedback.setInfo("排序已重置为默认")
 	} else {
 		if m.filteredNodes == nil {
 			m.filteredNodes = append([]NodeItem(nil), m.nodes...)
 		} else if m.searchQuery != "" {
 			m.applyFilter()
 			m.applySort()
+			m.feedback.setInfo("排序: " + m.sortMode.Label())
 			return
 		}
 		m.applySort()
+		m.feedback.setInfo("排序: " + m.sortMode.Label())
 	}
 	m.nodeIndex = 0
 }
@@ -534,6 +574,12 @@ func (m NodeManagerModel) handleGroupSearchInput(msg tea.KeyMsg) (tea.Model, tea
 		}
 		return m, nil
 	case "esc":
+		if m.groupSearchQuery != "" {
+			m.groupSearchQuery = ""
+			m.groupSearchInput.SetValue("")
+			m.groupFiltered = nil
+			m.groupIndex = 0
+		}
 		m.groupSearchInput.Blur()
 		return m, nil
 	default:
@@ -729,7 +775,6 @@ func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.
 func (m NodeManagerModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.success {
-		m.feedback.setSuccess("✅ 节点切换成功")
 		switchedName := ""
 		displayNodes := m.getDisplayNodes()
 		if m.nodeIndex < len(displayNodes) {
@@ -743,8 +788,8 @@ func (m NodeManagerModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, te
 				m.filteredNodes[i].Selected = (m.filteredNodes[i].Name == switchedName)
 			}
 		}
-		m.quitting = true
-		return m, tea.Quit
+		m.feedback.setSuccess("节点切换成功: " + switchedName)
+		return m, nil
 	}
 	m.feedback.setError("切换失败: " + msg.err)
 	return m, nil
@@ -769,7 +814,7 @@ func (m NodeManagerModel) handleNodeTestProgress(msg nodeTestProgressMsg) (tea.M
 	if msg.done {
 		m.testing = false
 		m.testStream = nil
-		m.feedback.setSuccess(fmt.Sprintf("✅ 延迟测试完成 (%d 个节点)", m.testDone))
+		m.feedback.setSuccess(fmt.Sprintf("延迟测试完成 (%d 个节点)", m.testDone))
 		return m, nil
 	}
 	if m.testStream != nil {

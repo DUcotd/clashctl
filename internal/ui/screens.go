@@ -19,25 +19,25 @@ func (m WizardModel) viewWelcome() string {
 		"",
 		"这个向导将帮助你：",
 		"",
-		"• 输入订阅 URL、直接粘贴订阅内容，或使用本地订阅文件",
-		"• 选择 TUN / mixed-port 运行模式",
-		"• 调整高级设置（可选）",
-		"• 自动生成并写入 Mihomo 配置",
-		"• 启动 Mihomo 并验证节点是否真正加载",
-		"• 进入代理组和节点管理",
+		"  • 输入订阅 URL、直接粘贴订阅内容，或使用本地订阅文件",
+		"  • 选择 TUN / mixed-port 运行模式",
+		"  • 调整高级设置（可选）",
+		"  • 自动生成并写入 Mihomo 配置",
+		"  • 启动 Mihomo 并验证节点是否真正加载",
+		"  • 进入代理组和节点管理",
 		"",
 		"如果服务器拉不到订阅，向导会自动提示本地导入静态配置。",
 	}, "\n")
-	return m.renderScrollablePage("开始使用", body, "Enter 开始 │ Esc / q 退出")
+	return m.renderScrollablePage("开始使用", body, renderKeyHelp([][2]string{
+		{"Enter", "开始"},
+		{"Esc/q", "退出"},
+	}))
 }
 
 func (m WizardModel) viewSubscription() string {
 	inputWidth := max(40, m.width-16)
 	m.urlInput.Width = inputWidth
 	m.fileInput.Width = inputWidth
-	// SetWidth/SetHeight on value receiver: mutations are discarded after render,
-	// but the modified copy is used for m.inlineInput.View() below, so this works.
-	// If future code depends on persisted dimensions, this must be refactored.
 	m.inlineInput.SetWidth(inputWidth)
 	m.inlineInput.SetHeight(8)
 
@@ -50,17 +50,30 @@ func (m WizardModel) viewSubscription() string {
 		body += InfoStyle.Render("推荐使用订阅 URL；向导会先尝试抓取并尽量转成服务器更稳定的静态配置") + "\n\n"
 		body += WarningStyle.Render("远程 provider-only 订阅会被拒绝；这类订阅请先在本地展开后再导入") + "\n\n"
 		body += m.urlInput.View()
-		footer = "←/→ 或 Tab 切换来源 │ Enter 下一步 │ Esc 退出 │ q 退出"
+		footer = renderKeyHelp([][2]string{
+			{"←/→", "切换来源"},
+			{"Enter", "下一步"},
+			{"Esc/q", "退出"},
+		})
 	case SubscriptionSourceInline:
 		body += InfoStyle.Render("可直接粘贴 Base64、原始节点链接列表或 Mihomo/Clash YAML") + "\n"
 		body += InfoStyle.Render("Enter 提交；终端支持时可用 Shift+Enter 手动换行，多行粘贴也可直接使用") + "\n\n"
 		body += m.inlineInput.View()
-		footer = "←/→ 或 Tab 切换来源 │ Enter 提交 │ Shift+Enter 换行 │ Esc 退出 │ q 退出"
+		footer = renderKeyHelp([][2]string{
+			{"←/→", "切换来源"},
+			{"Enter", "提交"},
+			{"Shift+Enter", "换行"},
+			{"Esc/q", "退出"},
+		})
 	case SubscriptionSourceFile:
 		body += InfoStyle.Render("适合服务器无法直连订阅时使用本地文件导入") + "\n"
 		body += InfoStyle.Render("支持 Base64 原始订阅、解码后的节点链接列表或 YAML 文件") + "\n\n"
 		body += m.fileInput.View()
-		footer = "←/→ 或 Tab 切换来源 │ Enter 下一步 │ Esc 退出 │ q 退出"
+		footer = renderKeyHelp([][2]string{
+			{"←/→", "切换来源"},
+			{"Enter", "下一步"},
+			{"Esc/q", "退出"},
+		})
 	}
 
 	return m.renderStaticCard("选择订阅来源", body, footer)
@@ -74,7 +87,7 @@ func (m WizardModel) viewMode() string {
 
 	for i, opt := range options {
 		if i == m.modeIndex {
-			lines = append(lines, SelectedStyle.Render("▸ "+opt))
+			lines = append(lines, SelectedBarStyle.Render("▸ "+opt))
 		} else {
 			lines = append(lines, UnselectedStyle.Render("  "+opt))
 		}
@@ -87,17 +100,23 @@ func (m WizardModel) viewMode() string {
 		lines = append(lines, "", WarningStyle.Render("⚠ 检测到 /dev/net/tun 或 iptables 不可用，TUN 模式不可用"))
 	}
 
-	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), "↑/↓ 选择 │ Enter 继续 │ a 高级设置 │ Esc 返回 │ q 退出")
+	return m.renderScrollablePage("运行模式", strings.Join(lines, "\n"), renderKeyHelp([][2]string{
+		{"↑/↓", "选择"},
+		{"Enter", "继续"},
+		{"a", "高级设置"},
+		{"Esc", "返回"},
+		{"q", "退出"},
+	}))
 }
 
 func (m WizardModel) viewAdvanced() string {
-	content := HeaderStyle.Render("高级设置（可选）") + "\n"
+	content := HeaderBarStyle.Render("高级设置（可选）") + "\n"
 	content += InfoStyle.Render("普通场景保持默认即可；修改后按 Enter 返回预览并开始确认") + "\n\n"
 
 	for i, field := range m.advancedFields {
 		val := m.advancedInputs[i].Value()
 		if i == m.advancedIndex {
-			content += SelectedStyle.Render("▸ "+field+": ") + m.advancedInputs[i].View() + "\n"
+			content += SelectedBarStyle.Render("▸ "+field+": ") + InputFocusedStyle.Render(m.advancedInputs[i].View()) + "\n"
 		} else {
 			content += UnselectedStyle.Render("  "+field+": ") + InfoStyle.Render(val) + "\n"
 		}
@@ -105,7 +124,13 @@ func (m WizardModel) viewAdvanced() string {
 
 	content += "\n" + WarningStyle.Render("控制器地址仅允许 127.0.0.1 / localhost / ::1 这类本地回环地址")
 
-	content += "\n" + HelpStyle.Render("↑/↓ 切换字段 │ 输入修改值 │ Enter 保存 │ Esc 放弃修改 │ q 退出")
+	content += "\n" + renderKeyHelp([][2]string{
+		{"↑/↓", "切换字段"},
+		{"输入", "修改值"},
+		{"Enter", "保存"},
+		{"Esc", "放弃"},
+		{"q", "退出"},
+	})
 
 	return BoxStyle.Render(content)
 }
@@ -130,7 +155,13 @@ func (m WizardModel) viewPreview() string {
 		"",
 		"首次启动可能需要下载 GeoSite/GeoIP 数据（~33MB），以及验证节点是否真正加载。",
 	}
-	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), "↑/↓ 滚动 │ Enter 开始配置 │ a 高级设置 │ Esc 返回 │ q 退出")
+	return m.renderScrollablePage("配置预览", strings.Join(rows, "\n"), renderKeyHelp([][2]string{
+		{"↑/↓", "滚动"},
+		{"Enter", "开始配置"},
+		{"a", "高级设置"},
+		{"Esc", "返回"},
+		{"q", "退出"},
+	}))
 }
 
 func renderSourceSelector(current SubscriptionSource) string {
@@ -143,9 +174,9 @@ func renderSourceSelector(current SubscriptionSource) string {
 	for _, opt := range options {
 		label := opt.Title()
 		if opt == current {
-			parts = append(parts, SelectedStyle.Render("▣ "+label))
+			parts = append(parts, SelectorActiveStyle.Render("▣ "+label))
 		} else {
-			parts = append(parts, UnselectedStyle.Render("□ "+label))
+			parts = append(parts, SelectorInactiveStyle.Render("□ "+label))
 		}
 	}
 	return strings.Join(parts, "   ")
@@ -181,14 +212,14 @@ func inlineContentKindLabel(kind string) string {
 func (m WizardModel) viewExecution() string {
 	content := m.spinner.View() + " " + InfoStyle.Render("执行中") + "\n\n"
 	if m.currentStep != "" {
-		content += InfoStyle.Render("当前步骤: "+m.currentStep) + "\n\n"
+		content += CardHeaderStyle.Render("当前步骤: "+m.currentStep) + "\n\n"
 	}
 	if len(m.execSteps) > 0 {
-		content += InfoStyle.Render("已完成步骤:") + "\n"
+		content += HeaderStyle.Render("进度:") + "\n"
 		for _, step := range m.execSteps {
-			marker := SuccessStyle.Render("✅ ")
+			marker := SuccessStyle.Render("✓ ")
 			if !step.Success {
-				marker = ErrorStyle.Render("❌ ")
+				marker = ErrorStyle.Render("✗ ")
 			}
 			content += marker + step.Label + "\n"
 		}
@@ -202,7 +233,13 @@ func (m WizardModel) viewExecution() string {
 	content += InfoStyle.Render("  • 启动 Mihomo 服务") + "\n"
 	content += InfoStyle.Render("  • 等待 Controller API 就绪")
 
-	return m.renderScrollablePage("正在配置 Mihomo...", content, "请稍候... │ q 退出")
+	if m.canAbortExecution {
+		footer := renderKeyHelp([][2]string{
+			{"Esc/q", "中止并退出"},
+		})
+		return m.renderScrollablePage("正在配置 Mihomo...", content, footer)
+	}
+	return m.renderScrollablePage("正在配置 Mihomo...", content, "请稍候，此阶段不可中断...")
 }
 
 func (m WizardModel) viewResult() string {
@@ -211,10 +248,10 @@ func (m WizardModel) viewResult() string {
 	var body strings.Builder
 	for _, step := range m.execSteps {
 		if step.Success {
-			body.WriteString(SuccessStyle.Render("✅ " + step.Label))
+			body.WriteString(SuccessStyle.Render("✓ " + step.Label))
 			body.WriteString("\n")
 		} else {
-			body.WriteString(ErrorStyle.Render("❌ " + step.Label))
+			body.WriteString(ErrorStyle.Render("✗ " + step.Label))
 			body.WriteString("\n")
 			allSuccess = false
 		}
@@ -231,16 +268,25 @@ func (m WizardModel) viewResult() string {
 		body.WriteString(SuccessStyle.Render("🎉 配置完成！Mihomo 已配置就绪。"))
 		body.WriteString("\n")
 	} else {
-		body.WriteString(WarningStyle.Render("⚠️ 部分步骤失败，请检查上述错误信息。"))
+		body.WriteString(WarningStyle.Render("⚠ 部分步骤失败，请检查上述错误信息。"))
 		body.WriteString("\n")
 	}
 
-	footer := "↑/↓ 滚动 │ Esc 返回 │ q 退出"
+	footer := renderKeyHelp([][2]string{
+		{"↑/↓", "滚动"},
+		{"Esc", "返回"},
+		{"q", "退出"},
+	})
 	if m.controllerAvailable {
 		body.WriteString("\n")
 		body.WriteString(InfoStyle.Render("Controller API 可用，可以管理节点。"))
 		body.WriteString("\n")
-		footer = "↑/↓ 滚动 │ Enter 进入节点管理 │ Esc 返回 │ q 退出"
+		footer = renderKeyHelp([][2]string{
+			{"↑/↓", "滚动"},
+			{"Enter", "进入节点管理"},
+			{"Esc", "返回"},
+			{"q", "退出"},
+		})
 	} else {
 		if m.canImportFallback {
 			body.WriteString("\n")
@@ -252,7 +298,12 @@ func (m WizardModel) viewResult() string {
 			}
 			body.WriteString(InfoStyle.Render("先在本地下载/解码订阅文件，再输入文件路径。"))
 			body.WriteString("\n")
-			footer = "↑/↓ 滚动 │ Enter 导入本地订阅 │ Esc 返回 │ q 退出"
+			footer = renderKeyHelp([][2]string{
+				{"↑/↓", "滚动"},
+				{"Enter", "导入本地订阅"},
+				{"Esc", "返回"},
+				{"q", "退出"},
+			})
 			return m.renderScrollablePage("执行结果", body.String(), footer)
 		}
 		body.WriteString("\n")
@@ -273,7 +324,11 @@ func (m WizardModel) viewImportLocal() string {
 		"",
 		TextStyle.Render("文件路径: ") + m.importInput.View(),
 	}, "\n")
-	return m.renderStaticCard("导入本地订阅文件", content, "Enter 开始导入 │ Esc 返回结果页 │ q 退出")
+	return m.renderStaticCard("导入本地订阅文件", content, renderKeyHelp([][2]string{
+		{"Enter", "开始导入"},
+		{"Esc", "返回结果页"},
+		{"q", "退出"},
+	}))
 }
 
 func (m WizardModel) renderStaticCard(header, body, footer string) string {
@@ -414,51 +469,62 @@ func parseYesNo(s string) bool {
 
 func (m WizardModel) viewQuitConfirm() string {
 	var d strings.Builder
-	d.WriteString(HeaderStyle.Render("确认退出"))
+	d.WriteString(HeaderBarStyle.Render("确认退出"))
 	d.WriteString("\n\n")
-	d.WriteString(WarningStyle.Render("确定要退出配置向导吗？"))
+	d.WriteString(ConfirmStyle.Render("确定要退出配置向导吗？"))
 	d.WriteString("\n")
 	d.WriteString(InfoStyle.Render("已输入的内容将不会被保存。"))
 	d.WriteString("\n\n")
-	d.WriteString(HelpStyle.Render("y / Enter 确认退出  │  n / Esc 取消"))
-	return BoxStyle.Render(d.String())
+	d.WriteString(renderKeyHelp([][2]string{
+		{"y", "确认退出"},
+		{"Enter", "确认退出"},
+		{"n", "取消"},
+		{"Esc", "取消"},
+	}))
+	return BoxWarningStyle.Render(d.String())
 }
 
 func (m WizardModel) viewWizardHelp() string {
 	var help strings.Builder
-	help.WriteString(HeaderStyle.Render("快捷键帮助"))
+	help.WriteString(HeaderBarStyle.Render("快捷键帮助"))
 	help.WriteString("\n\n")
 
-	help.WriteString(TextStyle.Render("全局操作:") + "\n")
-	help.WriteString(InfoStyle.Render("  q / Ctrl+C    退出向导") + "\n")
-	help.WriteString(InfoStyle.Render("  ?             显示/隐藏此帮助") + "\n")
+	help.WriteString(HelpSectionStyle.Render("全局操作:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("q", "退出向导") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Ctrl+C", "退出向导") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("?", "显示/隐藏此帮助") + "\n")
 	help.WriteString("\n")
 
-	help.WriteString(TextStyle.Render("导航:") + "\n")
-	help.WriteString(InfoStyle.Render("  Enter         确认/下一步") + "\n")
-	help.WriteString(InfoStyle.Render("  Esc           返回上一步 / 退出") + "\n")
+	help.WriteString(HelpSectionStyle.Render("导航:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Enter", "确认/下一步") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Esc", "返回上一步 / 退出") + "\n")
 	help.WriteString("\n")
 
-	help.WriteString(TextStyle.Render("订阅来源:") + "\n")
-	help.WriteString(InfoStyle.Render("  Tab / →       切换下一个来源") + "\n")
-	help.WriteString(InfoStyle.Render("  Shift+Tab / ← 切换上一个来源") + "\n")
+	help.WriteString(HelpSectionStyle.Render("订阅来源:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Tab", "切换下一个来源") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("→", "切换下一个来源") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Shift+Tab", "切换上一个来源") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("←", "切换上一个来源") + "\n")
 	help.WriteString("\n")
 
-	help.WriteString(TextStyle.Render("模式选择:") + "\n")
-	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    上下选择") + "\n")
-	help.WriteString(InfoStyle.Render("  a             进入高级设置") + "\n")
+	help.WriteString(HelpSectionStyle.Render("模式选择:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("↑/↓", "上下选择") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("j/k", "上下选择") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("a", "进入高级设置") + "\n")
 	help.WriteString("\n")
 
-	help.WriteString(TextStyle.Render("高级设置:") + "\n")
-	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    切换输入框") + "\n")
-	help.WriteString(InfoStyle.Render("  Enter         保存并返回预览") + "\n")
-	help.WriteString(InfoStyle.Render("  Esc           放弃更改并返回预览") + "\n")
+	help.WriteString(HelpSectionStyle.Render("高级设置:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("↑/↓", "切换输入框") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("j/k", "切换输入框") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Enter", "保存并返回预览") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Esc", "放弃更改并返回预览") + "\n")
 	help.WriteString("\n")
 
-	help.WriteString(TextStyle.Render("预览:") + "\n")
-	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    滚动查看") + "\n")
-	help.WriteString(InfoStyle.Render("  Enter         开始执行") + "\n")
-	help.WriteString(InfoStyle.Render("  a             进入高级设置") + "\n")
+	help.WriteString(HelpSectionStyle.Render("预览:") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("↑/↓", "滚动查看") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("j/k", "滚动查看") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("Enter", "开始执行") + "\n")
+	help.WriteString(InfoStyle.Render("  ") + renderKeyBinding("a", "进入高级设置") + "\n")
 	help.WriteString("\n")
 
 	help.WriteString(HelpStyle.Render("按任意键返回"))

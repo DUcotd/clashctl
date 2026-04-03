@@ -716,6 +716,8 @@ func (m WizardModel) View() string {
 	b.WriteString("\n")
 
 	if m.screen != ScreenWelcome {
+		b.WriteString(m.screen.StepDots())
+		b.WriteString("\n")
 		b.WriteString(StepStyle.Render(m.screen.StepLabel()))
 		b.WriteString("\n\n")
 	}
