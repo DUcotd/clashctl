@@ -56,6 +56,11 @@ func CreateSiblingTempFile(targetPath, patternSuffix string) (string, error) {
 		return "", err
 	}
 	tmpPath := tmpFile.Name()
+	// Explicitly set secure permissions regardless of umask
+	if err := os.Chmod(tmpPath, 0600); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", err
+	}
 	if err := tmpFile.Close(); err != nil {
 		_ = os.Remove(tmpPath)
 		return "", err
@@ -115,6 +120,16 @@ func WriteFileAtomic(path string, data []byte, mode os.FileMode) error {
 func ReplaceFile(srcPath, destPath string, opts ReplaceFileOptions) error {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return fmt.Errorf("创建目标目录失败: %w", err)
+	}
+
+	// Secondary validation to prevent TOCTOU symlink attacks
+	if err := ValidateOutputPath(destPath); err != nil {
+		return fmt.Errorf("目标路径不安全: %w", err)
+	}
+	if linfo, err := os.Lstat(destPath); err == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("拒绝覆盖符号链接: %s", destPath)
+		}
 	}
 
 	backupPath, err := ReserveSiblingPath(destPath, ".bak-*")
@@ -227,7 +242,12 @@ func ValidateOutputPath(path string) error {
 	}
 
 	if isRelative {
-		return nil
+		for _, root := range allowedOutputRoots() {
+			if pathWithinRoot(resolvedPath, root) {
+				return nil
+			}
+		}
+		return fmt.Errorf("相对路径必须位于允许的目录中: %s", resolvedPath)
 	}
 
 	for _, root := range allowedOutputRoots() {

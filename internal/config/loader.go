@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	// MaxConfigFileSize is the maximum allowed config file size (10MB)
 	MaxConfigFileSize = 10 * 1024 * 1024
-	// MaxProxyCount is the maximum number of proxies to prevent memory exhaustion
-	MaxProxyCount = 50000
+	MaxProxyCount     = 50000
+	MaxYAMLDepth      = 50
+	MaxYAMLNodes      = 100000
 )
 
 // BackupFile creates a timestamped backup of an existing file.
@@ -63,14 +63,39 @@ func ValidateYAML(path string) error {
 	return ValidateYAMLBytes(data, path)
 }
 
-// ValidateYAMLBytes checks whether a YAML document is parseable.
+// ValidateYAMLBytes checks whether a YAML document is parseable and within safe limits.
 func ValidateYAMLBytes(data []byte, source string) error {
-	var dummy any
-	if err := yaml.Unmarshal(data, &dummy); err != nil {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
 		return fmt.Errorf("YAML 解析错误 %s: %w", source, err)
 	}
-
+	if err := checkYAMLDepth(&node, 0); err != nil {
+		return fmt.Errorf("YAML 结构不安全 %s: %w", source, err)
+	}
+	if count := countYAMLNodes(&node); count > MaxYAMLNodes {
+		return fmt.Errorf("YAML 节点过多 %s: %d (最大允许 %d)", source, count, MaxYAMLNodes)
+	}
 	return nil
+}
+
+func checkYAMLDepth(node *yaml.Node, depth int) error {
+	if depth > MaxYAMLDepth {
+		return fmt.Errorf("YAML 嵌套过深: %d (最大允许 %d)", depth, MaxYAMLDepth)
+	}
+	for _, child := range node.Content {
+		if err := checkYAMLDepth(child, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func countYAMLNodes(node *yaml.Node) int {
+	count := 1
+	for _, child := range node.Content {
+		count += countYAMLNodes(child)
+	}
+	return count
 }
 
 // ReadConfigWithLimit reads a config file with size limit.

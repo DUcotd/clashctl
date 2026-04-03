@@ -120,6 +120,25 @@ func proxyScriptPath() (string, error) {
 }
 
 func upsertManagedBlock(path, block string) error {
+	// Reject symlinks to prevent writing to arbitrary files
+	if linfo, err := os.Lstat(path); err == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("拒绝写入符号链接: %s", path)
+		}
+		if linfo.Mode().Perm()&0002 != 0 {
+			return fmt.Errorf("拒绝写入全局可写文件: %s", path)
+		}
+	}
+
+	// Ensure target is within user's home directory
+	home, err := os.UserHomeDir()
+	if err == nil {
+		absPath, absErr := filepath.Abs(path)
+		if absErr == nil && !strings.HasPrefix(absPath, home+string(os.PathSeparator)) && absPath != home {
+			return fmt.Errorf("拒绝写入用户主目录外的文件: %s", absPath)
+		}
+	}
+
 	content, err := readManagedShellFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("读取 shell 配置失败: %w", err)

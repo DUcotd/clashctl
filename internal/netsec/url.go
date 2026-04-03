@@ -125,11 +125,8 @@ func resolveTimeout(timeout time.Duration) time.Duration {
 	return timeout
 }
 
-func isLocalHostname(host string) bool {
-	return host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local")
-}
-
-func isPrivateIP(ip net.IP) bool {
+// IsPrivateIP checks if an IP address is private, loopback, or otherwise non-routable.
+func IsPrivateIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
@@ -165,4 +162,12 @@ func isPrivateIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+func isLocalHostname(host string) bool {
+	return host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local")
+}
+
+func isPrivateIP(ip net.IP) bool {
+	return IsPrivateIP(ip)
 }

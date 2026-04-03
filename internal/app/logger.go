@@ -72,6 +72,8 @@ func sanitizeForLog(input string) string {
 		{regexp.MustCompile(`(?i)([a-z0-9._-]*(?:password|passwd|pwd|token|secret|api[_-]?key|key|auth)[a-z0-9._-]*\s*[=:]\s*)[^\s&;]+`), `${1}[REDACTED]`},
 		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`), `[REDACTED]`},
 		{regexp.MustCompile(`(?i)sk-(?:proj-|live-|test-)?[A-Za-z0-9_-]+`), `[REDACTED]`},
+		{regexp.MustCompile(`(?i)(xoxb-|xoxp-|xoxa-|xoxr-)[A-Za-z0-9-]+`), `[REDACTED]`},
+		{regexp.MustCompile(`(?i)(ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`), `[JWT_REDACTED]`},
 	}
 
 	for _, p := range passwordPatterns {

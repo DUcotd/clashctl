@@ -209,7 +209,16 @@ func writePIDFile(configDir string, pid int) error {
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(pidFilePath(configDir), []byte(strconv.Itoa(pid)), 0600)
+	path := pidFilePath(configDir)
+
+	// Reject symlinks to prevent arbitrary file overwrite
+	if linfo, err := os.Lstat(path); err == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("PID 文件路径是符号链接: %s", path)
+		}
+	}
+
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0600)
 }
 
 func readPIDFile(configDir string) (int, error) {

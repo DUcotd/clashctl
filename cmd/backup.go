@@ -365,6 +365,10 @@ func resolveBackupPath(backupDir, backupName string) (string, error) {
 	if filepath.Base(name) != name {
 		return "", fmt.Errorf("备份文件名不合法: %s", backupName)
 	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if ext != ".yaml" && ext != ".yml" {
+		return "", fmt.Errorf("备份文件扩展名不合法: %s (仅支持 .yaml/.yml)", ext)
+	}
 
 	baseDir, err := filepath.Abs(backupDir)
 	if err != nil {

@@ -265,7 +265,6 @@ func sanitizeProxyGroups(value any) []any {
 			continue
 		}
 		cleaned := map[string]any{}
-		groupType, _ := group["type"].(string)
 		for key, groupValue := range group {
 			lowerKey := strings.ToLower(key)
 			if !allowedKeys[lowerKey] {
@@ -276,10 +275,8 @@ func sanitizeProxyGroups(value any) []any {
 				if !ok {
 					continue
 				}
-				if needsRemoteGroupURL(groupType) {
-					if _, err := netsec.ValidateRemoteHTTPURL(urlValue, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
-						continue
-					}
+				if _, err := netsec.ValidateRemoteHTTPURL(urlValue, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
+					continue
 				}
 			}
 			cleaned[key] = cloneYAMLValue(groupValue)
@@ -289,15 +286,6 @@ func sanitizeProxyGroups(value any) []any {
 		}
 	}
 	return out
-}
-
-func needsRemoteGroupURL(groupType string) bool {
-	switch strings.ToLower(strings.TrimSpace(groupType)) {
-	case "url-test", "fallback", "load-balance":
-		return true
-	default:
-		return false
-	}
 }
 
 func sanitizeRuleProviders(value any, cfg *core.AppConfig) (map[string]any, []string) {

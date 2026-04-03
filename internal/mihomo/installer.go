@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -54,18 +55,22 @@ type InstallResult struct {
 // GetGitHubMirrorURL returns a mirror URL if GitHub is not directly accessible.
 // Returns the original URL if no mirror is needed or available.
 func GetGitHubMirrorURL(originalURL string) string {
-	// Check if user has set a custom mirror
 	if customMirror := os.Getenv("CLASHCTL_GITHUB_MIRROR"); customMirror != "" {
 		mirror := strings.TrimRight(customMirror, "/")
 		if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
-			return mirror + "/" + strings.TrimPrefix(originalURL, "https://")
+			mirrorURL, err := url.JoinPath(mirror, strings.TrimPrefix(originalURL, "https://"))
+			if err == nil {
+				return mirrorURL
+			}
 		}
 	}
 
-	// Try default mirrors if the original URL is not reachable
 	for _, mirror := range githubMirrors {
 		if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
-			return mirror + strings.TrimPrefix(originalURL, "https://")
+			mirrorURL, err := url.JoinPath(mirror, strings.TrimPrefix(originalURL, "https://"))
+			if err == nil {
+				return mirrorURL
+			}
 		}
 	}
 

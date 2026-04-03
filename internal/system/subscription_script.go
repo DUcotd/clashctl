@@ -207,6 +207,12 @@ func dialPreparedSubscription(ctx context.Context, dialer *net.Dialer, network, 
 		if ip == "" {
 			continue
 		}
+		if netsec.IsPrivateIP(addr.IP) && !netsec.AllowLocalSubscriptionTargets() {
+			if lastErr == nil {
+				lastErr = fmt.Errorf("拒绝连接内网/本地地址 %s (DNS rebinding 防护)", ip)
+			}
+			continue
+		}
 		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip, port))
 		if err == nil {
 			return conn, nil

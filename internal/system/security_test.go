@@ -15,11 +15,6 @@ func TestValidateOutputPath_PathTraversal(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name:    "safe relative path",
-			path:    "config.yaml",
-			wantErr: false,
-		},
-		{
 			name:    "safe absolute path in mihomo dir",
 			path:    "/etc/mihomo/config.yaml",
 			wantErr: false,
@@ -27,11 +22,6 @@ func TestValidateOutputPath_PathTraversal(t *testing.T) {
 		{
 			name:    "safe tmp path",
 			path:    "/tmp/config.yaml",
-			wantErr: false,
-		},
-		{
-			name:    "safe relative path in cwd",
-			path:    "nested/config.yaml",
 			wantErr: false,
 		},
 		{
