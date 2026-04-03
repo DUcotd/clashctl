@@ -24,6 +24,7 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 		Mode:               "rule",
 		LogLevel:           "info",
 		ExternalController: cfg.ControllerAddr,
+		Secret:             cfg.ControllerSecret,
 		ProxyProviders: map[string]*ProxyProvider{
 			"airport": {
 				Type:     "http",

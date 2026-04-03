@@ -387,9 +387,12 @@ func validateRestoreData(data []byte, targetKind, sourcePath string) error {
 	}
 	switch targetKind {
 	case "clashctl":
-		var cfg core.AppConfig
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
+		cfg := core.DefaultAppConfig()
+		if err := yaml.Unmarshal(data, cfg); err != nil {
 			return fmt.Errorf("备份文件校验失败: 无法解析 clashctl 配置: %w", err)
+		}
+		if err := app.ValidateManagedPaths(cfg); err != nil {
+			return fmt.Errorf("备份文件校验失败: clashctl 配置路径不安全: %w", err)
 		}
 	default:
 		if err := config.ValidateProxyCount(data); err != nil {

@@ -218,9 +218,12 @@ install_clashctl() {
 
     local local_asset="./clashctl-linux-${GOARCH}"
 
-    # Check local binary first
+    # Check local binary first, but require explicit opt-in to trust local files.
     if [ -f "$local_asset" ]; then
-        info "检测到本地文件，直接安装"
+        if [ "${CLASHCTL_INSTALL_ALLOW_LOCAL_BINARY:-}" != "1" ]; then
+            die "检测到本地文件 $local_asset，但默认拒绝信任本地二进制。若确认可信，请显式设置 CLASHCTL_INSTALL_ALLOW_LOCAL_BINARY=1 后重试"
+        fi
+        warn "已显式允许使用本地二进制，请自行确认其来源可信"
         mkdir -p "$INSTALL_DIR"
         cp "$local_asset" "$INSTALL_DIR/clashctl"
         chmod +x "$INSTALL_DIR/clashctl"

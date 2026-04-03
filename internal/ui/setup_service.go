@@ -266,7 +266,7 @@ func (r *setupRunContext) stepResolveRemotePlan(resolver *subscription.Resolver)
 	plan, err := resolver.ResolveRemoteURL(r.appCfg, r.appCfg.SubscriptionURL, 15*time.Second)
 	if err != nil {
 		detail := err.Error() + "\n提示: 服务器若无法直连订阅，可先在本地下载订阅，再用 'clashctl config import --file sub.txt --apply --start'"
-		if mihomo.IsMihomoRunningAt(r.appCfg.ControllerAddr) {
+		if mihomo.IsMihomoRunningAt(r.appCfg.ControllerAddr, r.appCfg.ControllerSecret) {
 			detail += "\n检测到当前已有 Mihomo 在运行；旧代理链路或系统代理可能干扰了本次检查"
 		}
 		r.addStep(ExecStep{Label: "获取订阅内容", Success: false, Detail: detail})

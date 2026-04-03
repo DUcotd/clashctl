@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"clashctl/internal/system"
 
@@ -69,6 +70,9 @@ func LoadOrCreateAppConfig() (*core.AppConfig, error) {
 	cfg := core.DefaultAppConfig()
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	if strings.TrimSpace(cfg.ControllerSecret) == "" {
+		cfg.ControllerSecret = core.GenerateControllerSecret()
 	}
 	if err := ValidateManagedPaths(cfg); err != nil {
 		return nil, err

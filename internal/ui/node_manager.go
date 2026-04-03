@@ -44,7 +44,10 @@ type NodeManagerModel struct {
 
 // NewNodeManager creates a standalone node-management TUI starting from group selection.
 func NewNodeManager(appCfg *core.AppConfig) NodeManagerModel {
-	return newNodeManagerWithService(appCfg, newDefaultNodeService(), false)
+	if appCfg == nil {
+		appCfg = core.DefaultAppConfig()
+	}
+	return newNodeManagerWithService(appCfg, newDefaultNodeService(appCfg.ControllerSecret), false)
 }
 
 func newNodeManagerWithService(appCfg *core.AppConfig, nodeSvc NodeService, completed bool) NodeManagerModel {
@@ -52,7 +55,7 @@ func newNodeManagerWithService(appCfg *core.AppConfig, nodeSvc NodeService, comp
 		appCfg = core.DefaultAppConfig()
 	}
 	if nodeSvc == nil {
-		nodeSvc = newDefaultNodeService()
+		nodeSvc = newDefaultNodeService(appCfg.ControllerSecret)
 	}
 
 	s := spinner.New()

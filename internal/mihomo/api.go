@@ -27,15 +27,34 @@ const (
 // Client communicates with the Mihomo controller REST API.
 type Client struct {
 	BaseURL string
+	Secret  string
 	HTTP    *http.Client
 }
 
 // NewClient creates a new Mihomo API client.
 func NewClient(baseURL string) *Client {
+	return NewClientWithSecret(baseURL, "")
+}
+
+// NewClientWithSecret creates a new Mihomo API client with optional bearer authentication.
+func NewClientWithSecret(baseURL, secret string) *Client {
 	return &Client{
 		BaseURL: baseURL,
+		Secret:  strings.TrimSpace(secret),
 		HTTP:    &http.Client{Timeout: APITimeout},
 	}
+}
+
+func (c *Client) setAuthHeader(req *http.Request) {
+	if req == nil || c == nil || c.Secret == "" {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Secret)
+}
+
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	c.setAuthHeader(req)
+	return c.HTTP.Do(req)
 }
 
 // ProxyGroup represents a proxy group from the controller API.
@@ -50,7 +69,11 @@ type ProxyGroup struct {
 // GetProxyGroup fetches details of a specific proxy group.
 func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
 	apiURL := fmt.Sprintf("%s/proxies/%s", c.BaseURL, url.PathEscape(name))
-	resp, err := c.HTTP.Get(apiURL)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接 controller API (%s): %w", c.BaseURL, err)
 	}
@@ -83,7 +106,7 @@ func (c *Client) SwitchProxy(groupName, nodeName string) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return fmt.Errorf("切换节点请求失败: %w", err)
 	}
@@ -99,7 +122,11 @@ func (c *Client) SwitchProxy(groupName, nodeName string) error {
 // Version fetches the Mihomo version from the controller API.
 func (c *Client) Version() (string, error) {
 	url := fmt.Sprintf("%s/version", c.BaseURL)
-	resp, err := c.HTTP.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("构建请求失败: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return "", fmt.Errorf("无法连接 controller API: %w", err)
 	}
@@ -138,7 +165,11 @@ func (c *Client) TestNode(groupName, nodeName string) int {
 		"timeout": []string{strconv.Itoa(DelayTestTimeoutMS)},
 	}
 	apiURL := fmt.Sprintf("%s/proxies/%s/delay?%s", c.BaseURL, url.PathEscape(name), params.Encode())
-	resp, err := c.HTTP.Get(apiURL)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return -1
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return -1
 	}

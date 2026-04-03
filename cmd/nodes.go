@@ -117,7 +117,7 @@ func runTUINodes(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	service := nodeops.NewService()
+	service := nodeops.NewServiceWithSecret(appCfg.ControllerSecret)
 	if err := service.CheckConnection(appCfg.ControllerAddr); err != nil {
 		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl service start' 或完成 'clashctl init'", err)
 	}
@@ -151,7 +151,7 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 		groupName = args[0]
 	}
 
-	service := nodeops.NewService()
+	service := nodeops.NewServiceWithSecret(cfg.ControllerSecret)
 	detail, err := service.GetGroup(cfg.ControllerAddr, groupName)
 	if err != nil {
 		return fmt.Errorf("获取节点列表失败: %w", err)
@@ -191,7 +191,7 @@ func runNodesUse(cmd *cobra.Command, args []string) error {
 		groupName = args[1]
 	}
 
-	service := nodeops.NewService()
+	service := nodeops.NewServiceWithSecret(cfg.ControllerSecret)
 	if err := service.SwitchNode(cfg.ControllerAddr, groupName, nodeName); err != nil {
 		return fmt.Errorf("切换节点失败: %w", err)
 	}
@@ -209,7 +209,7 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	service := nodeops.NewService()
+	service := nodeops.NewServiceWithSecret(cfg.ControllerSecret)
 	groups, err := service.ListGroups(cfg.ControllerAddr)
 	if err != nil {
 		return fmt.Errorf("获取代理组列表失败: %w", err)
@@ -254,7 +254,7 @@ func runNodesTest(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--concurrency 必须大于 0")
 	}
 
-	service := nodeops.NewService()
+	service := nodeops.NewServiceWithSecret(cfg.ControllerSecret)
 
 	groupNames := []string{"PROXY"}
 	if len(args) > 0 {

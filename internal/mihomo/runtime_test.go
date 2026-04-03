@@ -62,9 +62,9 @@ func TestRuntimeManagerStartFallsBackToProcess(t *testing.T) {
 		newProcess:         func(string) processStarter { return proc },
 		geoDataReady:       func(string) bool { return true },
 		ensureGeoData:      func(string) (*GeoDataResult, error) { return &GeoDataResult{}, nil },
-		waitForController:  func(string, int, time.Duration) error { return nil },
-		controllerVersion:  func(string) (string, error) { return "v1.2.3", nil },
-		inspectProxyInventory: func(string, string) (*ProxyInventory, error) {
+		waitForController:  func(string, string, int, time.Duration) error { return nil },
+		controllerVersion:  func(string, string) (string, error) { return "v1.2.3", nil },
+		inspectProxyInventory: func(string, string, string) (*ProxyInventory, error) {
 			return &ProxyInventory{Loaded: 3, Current: "node-a"}, nil
 		},
 		canUseTUN:          func() bool { return true },

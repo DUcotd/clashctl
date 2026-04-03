@@ -69,6 +69,14 @@ func NewService() Service {
 	}
 }
 
+func NewServiceWithSecret(secret string) Service {
+	return &defaultService{
+		newClient: func(controllerAddr string) controllerClient {
+			return mihomo.NewClientWithSecret("http://"+controllerAddr, secret)
+		},
+	}
+}
+
 func (s *defaultService) CheckConnection(controllerAddr string) error {
 	return s.newClient(controllerAddr).CheckConnection()
 }

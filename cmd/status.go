@@ -87,7 +87,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		serviceActive, serviceErr = mihomo.ServiceStatus(mihomo.DefaultServiceName)
 	}
 
-	client := mihomo.NewClient("http://" + cfg.ControllerAddr)
+	client := mihomo.NewClientWithSecret("http://"+cfg.ControllerAddr, cfg.ControllerSecret)
 	controllerErr := client.CheckConnection()
 	controllerOK := controllerErr == nil
 	controllerVersion := ""

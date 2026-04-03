@@ -19,7 +19,7 @@ type CheckResult struct {
 }
 
 // RunDoctor performs all environment checks and returns the results.
-func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
+func RunDoctor(configDir, controllerAddr, controllerSecret string, tunMode bool) []CheckResult {
 	var results []CheckResult
 
 	// 1. Check mihomo binary
@@ -44,7 +44,7 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 	}
 
 	// 6. Check controller port
-	results = append(results, checkControllerPort(controllerAddr))
+	results = append(results, checkControllerPort(controllerAddr, controllerSecret))
 
 	// 7. Check systemd availability
 	results = append(results, checkSystemd())
@@ -56,13 +56,13 @@ func RunDoctor(configDir, controllerAddr string, tunMode bool) []CheckResult {
 	results = append(results, checkDNS())
 
 	// 10. Check if mihomo is running (process check)
-	results = append(results, checkMihomoRunning(controllerAddr))
+	results = append(results, checkMihomoRunning(controllerAddr, controllerSecret))
 
 	// 11. Check geodata files (needed for GEOIP/GEOSITE rules)
 	results = append(results, checkGeoData(configDir))
 
 	// 12. Check whether subscription/provider nodes are actually loaded
-	results = append(results, checkProxyInventory(controllerAddr))
+	results = append(results, checkProxyInventory(controllerAddr, controllerSecret))
 
 	return results
 }
@@ -161,10 +161,10 @@ func checkRootPrivilege() CheckResult {
 	}
 }
 
-func checkControllerPort(controllerAddr string) CheckResult {
+func checkControllerPort(controllerAddr, controllerSecret string) CheckResult {
 	if system.CheckPortInUse(controllerAddr) {
 		// Port is in use - check if it's actually a working Mihomo instance
-		client := NewClient("http://" + controllerAddr)
+		client := NewClientWithSecret("http://"+controllerAddr, controllerSecret)
 		if err := client.CheckConnection(); err == nil {
 			// Mihomo is running and responding - this is fine
 			version, _ := client.Version()
@@ -259,8 +259,8 @@ func checkDNS() CheckResult {
 	}
 }
 
-func checkMihomoRunning(controllerAddr string) CheckResult {
-	client := NewClient("http://" + controllerAddr)
+func checkMihomoRunning(controllerAddr, controllerSecret string) CheckResult {
+	client := NewClientWithSecret("http://"+controllerAddr, controllerSecret)
 	if err := client.CheckConnection(); err != nil {
 		return CheckResult{
 			Name:    "Mihomo 运行状态",
@@ -282,8 +282,8 @@ func checkMihomoRunning(controllerAddr string) CheckResult {
 	}
 }
 
-func checkProxyInventory(controllerAddr string) CheckResult {
-	client := NewClient("http://" + controllerAddr)
+func checkProxyInventory(controllerAddr, controllerSecret string) CheckResult {
+	client := NewClientWithSecret("http://"+controllerAddr, controllerSecret)
 	inv, err := client.InspectProxyInventory("PROXY")
 	if err != nil {
 		return CheckResult{

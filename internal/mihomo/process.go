@@ -150,12 +150,12 @@ func (p *Process) IsRunning() bool {
 // IsMihomoRunning checks if ANY mihomo process is running (system-wide)
 // by attempting to reach the default controller API.
 func IsMihomoRunning() bool {
-	return IsMihomoRunningAt(core.DefaultControllerAddr)
+	return IsMihomoRunningAt(core.DefaultControllerAddr, "")
 }
 
 // IsMihomoRunningAt checks if mihomo is running at the given controller address.
-func IsMihomoRunningAt(controllerAddr string) bool {
-	client := NewClient("http://" + controllerAddr)
+func IsMihomoRunningAt(controllerAddr, controllerSecret string) bool {
+	client := NewClientWithSecret("http://"+controllerAddr, controllerSecret)
 	return client.CheckConnection() == nil
 }
 

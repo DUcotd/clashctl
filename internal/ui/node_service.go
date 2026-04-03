@@ -16,9 +16,9 @@ type defaultNodeService struct {
 	shared nodeops.Service
 }
 
-func newDefaultNodeService() NodeService {
+func newDefaultNodeService(controllerSecret string) NodeService {
 	return &defaultNodeService{
-		shared: nodeops.NewService(),
+		shared: nodeops.NewServiceWithSecret(controllerSecret),
 	}
 }
 

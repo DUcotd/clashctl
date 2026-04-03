@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"clashctl/internal/system"
@@ -78,6 +79,18 @@ func GeoDataURLMirror2(filename string) string {
 	return fmt.Sprintf("https://gh-proxy.com/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/%s", filename)
 }
 
+const geoDataMirrorOptInEnv = "CLASHCTL_ALLOW_UNVERIFIED_GEODATA_MIRRORS"
+
+func allowUnverifiedGeoDataMirrors() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(geoDataMirrorOptInEnv)))
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 // EnsureGeoData downloads missing geodata files to configDir.
 // Returns the number of files downloaded and any error.
 func EnsureGeoData(configDir string) (*GeoDataResult, error) {
@@ -97,11 +110,10 @@ func EnsureGeoData(configDir string) (*GeoDataResult, error) {
 			continue
 		}
 
-		// Try multiple sources
-		urls := []string{
-			GeoDataURL(f.Name),
-			GeoDataURLMirror(f.Name),
-			GeoDataURLMirror2(f.Name),
+		// Only trust the official source by default. Unverified mirrors require explicit opt-in.
+		urls := []string{GeoDataURL(f.Name)}
+		if allowUnverifiedGeoDataMirrors() {
+			urls = append(urls, GeoDataURLMirror(f.Name), GeoDataURLMirror2(f.Name))
 		}
 
 		var lastErr error
@@ -231,8 +243,8 @@ func GeoDataReady(configDir string) bool {
 
 // WaitForController waits for the controller API to become ready, with retries.
 // Returns nil when API is reachable, or error after all retries exhausted.
-func WaitForController(addr string, maxRetries int, interval time.Duration) error {
-	client := NewClient("http://" + addr)
+func WaitForController(addr, secret string, maxRetries int, interval time.Duration) error {
+	client := NewClientWithSecret("http://"+addr, secret)
 
 	for i := 0; i < maxRetries; i++ {
 		if err := client.CheckConnection(); err == nil {

@@ -75,7 +75,10 @@ type ExecStep struct {
 
 // NewWizard creates a new setup wizard with defaults or persisted values.
 func NewWizard(appCfg *core.AppConfig) WizardModel {
-	return newWizardWithServices(appCfg, newDefaultSetupService(), newDefaultNodeService())
+	if appCfg == nil {
+		appCfg = core.DefaultAppConfig()
+	}
+	return newWizardWithServices(appCfg, newDefaultSetupService(), newDefaultNodeService(appCfg.ControllerSecret))
 }
 
 func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSvc NodeService) WizardModel {
@@ -86,7 +89,7 @@ func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSv
 		setupSvc = newDefaultSetupService()
 	}
 	if nodeSvc == nil {
-		nodeSvc = newDefaultNodeService()
+		nodeSvc = newDefaultNodeService(appCfg.ControllerSecret)
 	}
 
 	modeIndex := 1

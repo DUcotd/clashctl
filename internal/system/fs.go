@@ -201,6 +201,7 @@ func ValidateOutputPath(path string) error {
 
 	// Clean the path to normalize it (resolve . and ..)
 	cleanPath := filepath.Clean(path)
+	isRelative := !filepath.IsAbs(cleanPath)
 
 	// After cleaning, check if it's trying to escape to parent directories
 	// This catches cases like "/etc/mihomo/../../../etc/passwd"
@@ -223,6 +224,10 @@ func ValidateOutputPath(path string) error {
 		if resolvedPath == dangerous || strings.HasPrefix(resolvedPath, dangerous+"/") {
 			return fmt.Errorf("不允许写入系统路径: %s", resolvedPath)
 		}
+	}
+
+	if isRelative {
+		return nil
 	}
 
 	for _, root := range allowedOutputRoots() {
@@ -272,12 +277,6 @@ func syncDir(path string) error {
 
 func allowedOutputRoots() []string {
 	roots := []string{"/etc/mihomo", "/tmp", "/var/tmp"}
-
-	if cwd, err := os.Getwd(); err == nil {
-		if resolved, err := resolvePathForWrite(cwd); err == nil && strings.TrimSpace(resolved) != "/" {
-			roots = append(roots, resolved)
-		}
-	}
 
 	if home, err := os.UserHomeDir(); err == nil {
 		configRoot := filepath.Join(home, ".config", "clashctl")

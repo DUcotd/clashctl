@@ -44,9 +44,9 @@ type RuntimeManager struct {
 	newProcess            func(string) processStarter
 	geoDataReady          func(string) bool
 	ensureGeoData         func(string) (*GeoDataResult, error)
-	waitForController     func(string, int, time.Duration) error
-	controllerVersion     func(string) (string, error)
-	inspectProxyInventory func(string, string) (*ProxyInventory, error)
+	waitForController     func(string, string, int, time.Duration) error
+	controllerVersion     func(string, string) (string, error)
+	inspectProxyInventory func(string, string, string) (*ProxyInventory, error)
 	canUseTUN             func() bool
 	checkTUNPermission    func() error
 }
@@ -65,14 +65,16 @@ func NewRuntimeManager() *RuntimeManager {
 		newProcess: func(configDir string) processStarter {
 			return NewProcess(configDir)
 		},
-		geoDataReady:      GeoDataReady,
-		ensureGeoData:     EnsureGeoData,
-		waitForController: WaitForController,
-		controllerVersion: func(addr string) (string, error) {
-			return NewClient("http://" + addr).Version()
+		geoDataReady:  GeoDataReady,
+		ensureGeoData: EnsureGeoData,
+		waitForController: func(addr, secret string, maxRetries int, interval time.Duration) error {
+			return WaitForController(addr, secret, maxRetries, interval)
 		},
-		inspectProxyInventory: func(addr, group string) (*ProxyInventory, error) {
-			return NewClient("http://" + addr).InspectProxyInventory(group)
+		controllerVersion: func(addr, secret string) (string, error) {
+			return NewClientWithSecret("http://"+addr, secret).Version()
+		},
+		inspectProxyInventory: func(addr, secret, group string) (*ProxyInventory, error) {
+			return NewClientWithSecret("http://"+addr, secret).InspectProxyInventory(group)
 		},
 		canUseTUN:          CanUseTUN,
 		checkTUNPermission: CheckTUNPermission,
@@ -179,14 +181,14 @@ func (m *RuntimeManager) StartWithBinary(cfg *core.AppConfig, binary *InstallRes
 		result.StartedBy = "process"
 	}
 
-	if err := m.waitForController(cfg.ControllerAddr, opts.WaitRetries, opts.WaitInterval); err != nil {
+	if err := m.waitForController(cfg.ControllerAddr, cfg.ControllerSecret, opts.WaitRetries, opts.WaitInterval); err != nil {
 		return result, fmt.Errorf("Controller API 未就绪: %w", err)
 	}
 	result.ControllerReady = true
-	result.ControllerVersion, _ = m.controllerVersion(cfg.ControllerAddr)
+	result.ControllerVersion, _ = m.controllerVersion(cfg.ControllerAddr, cfg.ControllerSecret)
 
 	if opts.VerifyInventory {
-		inv, err := m.inspectProxyInventory(cfg.ControllerAddr, "PROXY")
+		inv, err := m.inspectProxyInventory(cfg.ControllerAddr, cfg.ControllerSecret, "PROXY")
 		if err != nil {
 			result.InventoryError = err.Error()
 		} else {

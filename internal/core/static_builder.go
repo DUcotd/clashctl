@@ -8,6 +8,7 @@ func BuildStaticMihomoConfig(cfg *AppConfig, proxies []map[string]any, names []s
 		Mode:               "rule",
 		LogLevel:           "info",
 		ExternalController: cfg.ControllerAddr,
+		Secret:             cfg.ControllerSecret,
 		Proxies:            proxies,
 		ProxyGroups: []*ProxyGroup{
 			{

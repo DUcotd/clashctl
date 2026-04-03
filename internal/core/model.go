@@ -7,6 +7,7 @@ type AppConfig struct {
 	Mode              string `yaml:"mode" mapstructure:"mode"` // "tun" or "mixed"
 	ConfigDir         string `yaml:"config_dir" mapstructure:"config_dir"`
 	ControllerAddr    string `yaml:"controller_addr" mapstructure:"controller_addr"`
+	ControllerSecret  string `yaml:"controller_secret,omitempty" mapstructure:"controller_secret"`
 	MixedPort         int    `yaml:"mixed_port" mapstructure:"mixed_port"`
 	ProviderPath      string `yaml:"provider_path" mapstructure:"provider_path"`
 	EnableHealthCheck bool   `yaml:"enable_health_check" mapstructure:"enable_health_check"`
@@ -20,6 +21,7 @@ func DefaultAppConfig() *AppConfig {
 		Mode:              "mixed",
 		ConfigDir:         DefaultConfigDir,
 		ControllerAddr:    DefaultControllerAddr,
+		ControllerSecret:  GenerateControllerSecret(),
 		MixedPort:         DefaultMixedPort,
 		ProviderPath:      DefaultProviderPath,
 		EnableHealthCheck: true,

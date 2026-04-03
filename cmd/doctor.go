@@ -55,7 +55,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, doctorTunMode)
+	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, cfg.ControllerSecret, doctorTunMode)
 	report := buildDoctorReport("doctor", doctorTunMode, results, nil)
 	if doctorJSON {
 		if err := writeJSON(report); err != nil {

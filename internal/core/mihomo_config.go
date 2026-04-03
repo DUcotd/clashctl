@@ -8,6 +8,7 @@ type MihomoConfig struct {
 	Mode               string                    `yaml:"mode"`
 	LogLevel           string                    `yaml:"log-level"`
 	ExternalController string                    `yaml:"external-controller"`
+	Secret             string                    `yaml:"secret,omitempty"`
 	Proxies            []map[string]any          `yaml:"proxies,omitempty"`
 	ProxyProviders     map[string]*ProxyProvider `yaml:"proxy-providers,omitempty"`
 	ProxyGroups        []*ProxyGroup             `yaml:"proxy-groups"`
