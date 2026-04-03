@@ -3,7 +3,6 @@ package ui
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -13,6 +12,13 @@ import (
 	"clashctl/internal/subscription"
 	"clashctl/internal/system"
 )
+
+func validateResolvedContentSize(data []byte, sourceLabel string) error {
+	if int64(len(data)) > system.MaxPreparedSubscriptionBytes {
+		return fmt.Errorf("%s过大: %d bytes (最大允许 %d bytes)", sourceLabel, len(data), system.MaxPreparedSubscriptionBytes)
+	}
+	return nil
+}
 
 // SetupService runs the setup pipeline behind the TUI.
 type SetupService interface {
@@ -44,7 +50,7 @@ func newDefaultSetupService() SetupService {
 	return &defaultSetupService{
 		newRuntimeManager:   mihomo.NewRuntimeManager,
 		newResolver:         subscription.NewResolver,
-		readFile:            os.ReadFile,
+		readFile:            system.ReadPreparedSubscriptionBody,
 		persistShellProxy:   system.PersistShellProxyEnv,
 		removeShellProxyEnv: system.RemoveShellProxyEnv,
 	}
@@ -173,6 +179,14 @@ func (s *defaultSetupService) StartImport(appCfg *core.AppConfig, filePath strin
 			})
 			return
 		}
+		if err := validateResolvedContentSize(data, "本地订阅文件"); err != nil {
+			run.addStep(ExecStep{
+				Label:   "读取本地订阅文件",
+				Success: false,
+				Detail:  err.Error(),
+			})
+			return
+		}
 
 		run.addStep(ExecStep{
 			Label:   "读取本地订阅文件",
@@ -192,6 +206,15 @@ func (s *defaultSetupService) StartImport(appCfg *core.AppConfig, filePath strin
 func (s *defaultSetupService) StartInline(appCfg *core.AppConfig, content string) <-chan setupProgressMsg {
 	return s.stream(appCfg, func(run *setupRunContext) {
 		data := []byte(content)
+		if err := validateResolvedContentSize(data, "粘贴订阅内容"); err != nil {
+			run.current("读取粘贴订阅内容")
+			run.addStep(ExecStep{
+				Label:   "读取粘贴订阅内容",
+				Success: false,
+				Detail:  err.Error(),
+			})
+			return
+		}
 		run.current("读取粘贴订阅内容")
 		run.addStep(ExecStep{
 			Label:   "读取粘贴订阅内容",

@@ -8,6 +8,7 @@ import (
 
 	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
+	"clashctl/internal/system"
 )
 
 func TestScreenStepLabel(t *testing.T) {
@@ -351,6 +352,13 @@ func TestSubscriptionEnterUsesInlineContent(t *testing.T) {
 	}
 	if got.appCfg.SubscriptionURL != "" || got.localImportPath != "" {
 		t.Fatalf("unexpected alternate source state: url=%q file=%q", got.appCfg.SubscriptionURL, got.localImportPath)
+	}
+}
+
+func TestInlineInputUsesPreparedSubscriptionLimit(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	if wizard.inlineInput.CharLimit != int(system.MaxPreparedSubscriptionBytes) {
+		t.Fatalf("CharLimit = %d, want %d", wizard.inlineInput.CharLimit, system.MaxPreparedSubscriptionBytes)
 	}
 }
 

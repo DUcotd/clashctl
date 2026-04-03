@@ -3,6 +3,7 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,9 +16,10 @@ import (
 type LogLevel string
 
 const (
-	LogLevelInfo  LogLevel = "INFO"
-	LogLevelWarn  LogLevel = "WARN"
-	LogLevelError LogLevel = "ERROR"
+	LogLevelInfo          LogLevel = "INFO"
+	LogLevelWarn          LogLevel = "WARN"
+	LogLevelError         LogLevel = "ERROR"
+	maxRecentLogReadBytes          = 1 * 1024 * 1024
 )
 
 // LogDir returns the clashctl log directory.
@@ -63,24 +65,17 @@ func sanitizeForLog(input string) string {
 
 	// Sanitize passwords/tokens (common patterns)
 	passwordPatterns := []struct {
-		regex *regexp.Regexp
+		regex       *regexp.Regexp
+		replacement string
 	}{
-		{regexp.MustCompile(`(?i)(password|passwd|pwd|token|secret|key|auth)[=:\s]+[^\s&;]+`)},
-		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`)}, // GitHub tokens
-		{regexp.MustCompile(`(?i)Bearer\s+[A-Za-z0-9._~+/=-]+`)},            // Bearer tokens
+		{regexp.MustCompile(`(?i)(Bearer\s+)[A-Za-z0-9._~+/=-]+`), `${1}[REDACTED]`},
+		{regexp.MustCompile(`(?i)([a-z0-9._-]*(?:password|passwd|pwd|token|secret|api[_-]?key|key|auth)[a-z0-9._-]*\s*[=:]\s*)[^\s&;]+`), `${1}[REDACTED]`},
+		{regexp.MustCompile(`(?i)(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9_]+`), `[REDACTED]`},
+		{regexp.MustCompile(`(?i)sk-(?:proj-|live-|test-)?[A-Za-z0-9_-]+`), `[REDACTED]`},
 	}
 
 	for _, p := range passwordPatterns {
-		result = p.regex.ReplaceAllStringFunc(result, func(match string) string {
-			// Find the key part and redact the value
-			for _, prefix := range []string{"password", "passwd", "pwd", "token", "secret", "key", "auth", "Bearer", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"} {
-				idx := strings.Index(strings.ToLower(match), strings.ToLower(prefix))
-				if idx >= 0 {
-					return match[:idx+len(prefix)] + "=[REDACTED]"
-				}
-			}
-			return "[REDACTED]"
-		})
+		result = p.regex.ReplaceAllString(result, p.replacement)
 	}
 
 	return result
@@ -144,7 +139,7 @@ func GetRecentLogs(count int) ([]string, error) {
 	}
 
 	logFile := filepath.Join(logDir, time.Now().Format("2006-01-02")+".log")
-	data, err := os.ReadFile(logFile)
+	data, err := readRecentLogTail(logFile, maxRecentLogReadBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -157,6 +152,44 @@ func GetRecentLogs(count int) ([]string, error) {
 		return lines, nil
 	}
 	return lines[len(lines)-count:], nil
+}
+
+func readRecentLogTail(path string, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("invalid log read limit: %d", maxBytes)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	offset := int64(0)
+	if info.Size() > maxBytes {
+		offset = info.Size() - maxBytes
+	}
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes))
+	if err != nil {
+		return nil, err
+	}
+	if offset > 0 {
+		if idx := strings.IndexByte(string(data), '\n'); idx >= 0 {
+			data = data[idx+1:]
+		} else {
+			return nil, nil
+		}
+	}
+	return data, nil
 }
 
 func splitLines(text string) []string {

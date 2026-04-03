@@ -1,11 +1,15 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"clashctl/internal/core"
+	"clashctl/internal/system"
 )
 
 func keyMsg(key string) tea.KeyMsg {
@@ -187,5 +191,75 @@ func TestNodeManagerStartsStreamingLatencyTest(t *testing.T) {
 	}
 	if nodeSvc.testCalls != 1 {
 		t.Fatalf("testCalls = %d, want 1", nodeSvc.testCalls)
+	}
+}
+
+func TestStartInlineRejectsOversizedContent(t *testing.T) {
+	svc := &defaultSetupService{}
+	stream := svc.StartInline(core.DefaultAppConfig(), strings.Repeat("a", int(system.MaxPreparedSubscriptionBytes)+1))
+
+	_, ok := <-stream
+	if !ok {
+		t.Fatal("expected progress message")
+	}
+	result, ok := <-stream
+	if !ok {
+		t.Fatal("expected failed step message")
+	}
+	if result.step == nil || result.step.Success {
+		t.Fatalf("result message = %#v, want failed step", result)
+	}
+	if !strings.Contains(result.step.Detail, "粘贴订阅内容过大") {
+		t.Fatalf("detail = %q", result.step.Detail)
+	}
+}
+
+func TestStartImportRejectsOversizedContent(t *testing.T) {
+	svc := &defaultSetupService{
+		readFile: func(string) ([]byte, error) {
+			return []byte(strings.Repeat("a", int(system.MaxPreparedSubscriptionBytes)+1)), nil
+		},
+	}
+	stream := svc.StartImport(core.DefaultAppConfig(), "/tmp/sub.txt")
+
+	_, ok := <-stream
+	if !ok {
+		t.Fatal("expected progress message")
+	}
+	result, ok := <-stream
+	if !ok {
+		t.Fatal("expected failed step message")
+	}
+	if result.step == nil || result.step.Success {
+		t.Fatalf("result message = %#v, want failed step", result)
+	}
+	if !strings.Contains(result.step.Detail, "本地订阅文件过大") {
+		t.Fatalf("detail = %q", result.step.Detail)
+	}
+}
+
+func TestDefaultSetupServiceImportUsesLimitedFileReader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sub.txt")
+	data := make([]byte, system.MaxPreparedSubscriptionBytes+1)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	svc := newDefaultSetupService()
+	stream := svc.StartImport(core.DefaultAppConfig(), path)
+
+	_, ok := <-stream
+	if !ok {
+		t.Fatal("expected progress message")
+	}
+	result, ok := <-stream
+	if !ok {
+		t.Fatal("expected failed step message")
+	}
+	if result.step == nil || result.step.Success {
+		t.Fatalf("result message = %#v, want failed step", result)
+	}
+	if !strings.Contains(result.step.Detail, "过大") {
+		t.Fatalf("detail = %q", result.step.Detail)
 	}
 }

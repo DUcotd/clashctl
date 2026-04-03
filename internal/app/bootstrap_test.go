@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	configfile "clashctl/internal/config"
 	"clashctl/internal/core"
 )
 
@@ -222,6 +223,30 @@ func TestLoadOrCreateAppConfigRejectsUnsafePersistedControllerAddr(t *testing.T)
 		t.Fatal("LoadOrCreateAppConfig() should reject unsafe persisted controller_addr")
 	}
 	if !strings.Contains(err.Error(), "控制器地址不安全") {
+		t.Fatalf("LoadOrCreateAppConfig() error = %v", err)
+	}
+}
+
+func TestLoadOrCreateAppConfigRejectsOversizedConfig(t *testing.T) {
+	withTempHome(t)
+
+	if err := EnsureMyAppDir(); err != nil {
+		t.Fatalf("EnsureMyAppDir() error = %v", err)
+	}
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath() error = %v", err)
+	}
+	oversized := strings.Repeat("a", configfile.MaxConfigFileSize+1)
+	if err := os.WriteFile(path, []byte(oversized), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err = LoadOrCreateAppConfig()
+	if err == nil {
+		t.Fatal("LoadOrCreateAppConfig() should reject oversized config")
+	}
+	if !strings.Contains(err.Error(), "配置文件过大") {
 		t.Fatalf("LoadOrCreateAppConfig() error = %v", err)
 	}
 }

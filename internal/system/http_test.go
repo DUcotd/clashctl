@@ -51,3 +51,27 @@ func TestNewHTTPClientIgnoresProxyEnvWhenDirect(t *testing.T) {
 		}
 	}
 }
+
+func TestNewHTTPClientRejectsUnsafeRedirectTarget(t *testing.T) {
+	client := NewHTTPClient(DefaultTimeout, false)
+	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:8080/sub", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+
+	if err := client.CheckRedirect(req, nil); err == nil {
+		t.Fatal("CheckRedirect() should reject localhost redirect target")
+	}
+}
+
+func TestNewHTTPClientAllowsPublicRedirectTarget(t *testing.T) {
+	client := NewHTTPClient(DefaultTimeout, false)
+	req, err := http.NewRequest(http.MethodGet, "https://93.184.216.34/download", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+
+	if err := client.CheckRedirect(req, nil); err != nil {
+		t.Fatalf("CheckRedirect() error = %v, want nil", err)
+	}
+}

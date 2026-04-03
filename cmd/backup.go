@@ -312,7 +312,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read backup
-	data, err := os.ReadFile(backupPath)
+	data, err := config.ReadConfigWithLimit(backupPath)
 	if err != nil {
 		return fmt.Errorf("读取备份失败: %w", err)
 	}
@@ -403,7 +403,7 @@ func validateRestoreData(data []byte, targetKind, sourcePath string) error {
 }
 
 func copyBackupFile(sourcePath, backupPath string) error {
-	data, err := os.ReadFile(sourcePath)
+	data, err := config.ReadConfigWithLimit(sourcePath)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	configfile "clashctl/internal/config"
 	"clashctl/internal/system"
 
 	"gopkg.in/yaml.v3"
@@ -62,7 +63,7 @@ func LoadOrCreateAppConfig() (*core.AppConfig, error) {
 	}
 
 	// Load from YAML file
-	data, err := os.ReadFile(path)
+	data, err := configfile.ReadConfigWithLimit(path)
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}

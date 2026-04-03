@@ -57,6 +57,20 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	return c.HTTP.Do(req)
 }
 
+func decodeAPIJSON(body io.Reader, dest any) error {
+	data, err := io.ReadAll(io.LimitReader(body, APIResponseMaxSize+1))
+	if err != nil {
+		return fmt.Errorf("读取 API 响应失败: %w", err)
+	}
+	if len(data) > APIResponseMaxSize {
+		return fmt.Errorf("API 响应体过大 (超过 %d bytes)", APIResponseMaxSize)
+	}
+	if err := json.Unmarshal(data, dest); err != nil {
+		return fmt.Errorf("解析 API 响应失败: %w", err)
+	}
+	return nil
+}
+
 // ProxyGroup represents a proxy group from the controller API.
 type ProxyGroup struct {
 	Name    string    `json:"name"`
@@ -85,8 +99,8 @@ func (c *Client) GetProxyGroup(name string) (*ProxyGroup, error) {
 	}
 
 	var group ProxyGroup
-	if err := json.NewDecoder(resp.Body).Decode(&group); err != nil {
-		return nil, fmt.Errorf("解析 API 响应失败: %w", err)
+	if err := decodeAPIJSON(resp.Body, &group); err != nil {
+		return nil, err
 	}
 	return &group, nil
 }
@@ -135,7 +149,7 @@ func (c *Client) Version() (string, error) {
 	var result struct {
 		Version string `json:"version"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := decodeAPIJSON(resp.Body, &result); err != nil {
 		return "", fmt.Errorf("解析版本信息失败: %w", err)
 	}
 	return result.Version, nil
@@ -180,7 +194,7 @@ func (c *Client) TestNode(groupName, nodeName string) int {
 	}
 
 	var info delayInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if err := decodeAPIJSON(resp.Body, &info); err != nil {
 		return -1
 	}
 

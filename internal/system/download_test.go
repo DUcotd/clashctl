@@ -135,3 +135,24 @@ func TestDownloadBytesWithDoerLimitRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("DownloadBytesWithDoerLimit() error = %v", err)
 	}
 }
+
+func TestFetchJSONWithDoerRejectsOversizedBody(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/meta.json", nil)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+
+	oversizedErr := FetchJSONWithDoer(fakeHTTPDoer(func(*http.Request) (*http.Response, error) {
+		body := strings.Repeat("a", MaxJSONResponseBytes+1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}), req, &map[string]any{})
+	if oversizedErr == nil {
+		t.Fatal("FetchJSONWithDoer() should reject oversized bodies")
+	}
+	if !strings.Contains(oversizedErr.Error(), "JSON 响应体过大") {
+		t.Fatalf("FetchJSONWithDoer() error = %v", oversizedErr)
+	}
+}

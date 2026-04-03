@@ -29,7 +29,7 @@ func BackupFile(path string) (string, error) {
 	timestamp := time.Now().Format("20060102-150405")
 	backupPath := fmt.Sprintf("%s.bak.%s", path, timestamp)
 
-	data, err := os.ReadFile(path)
+	data, err := ReadConfigWithLimit(path)
 	if err != nil {
 		return "", fmt.Errorf("读取 %s 备份失败: %w", path, err)
 	}

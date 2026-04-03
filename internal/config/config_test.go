@@ -172,3 +172,19 @@ proxy-providers:
 		t.Fatalf("ValidateProxyCount() error = %v, want nil for provider-only config", err)
 	}
 }
+
+func TestBackupFileRejectsOversizedConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	oversized := strings.Repeat("a", MaxConfigFileSize+1)
+	if err := os.WriteFile(path, []byte(oversized), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := BackupFile(path)
+	if err == nil {
+		t.Fatal("BackupFile() should reject oversized configs")
+	}
+	if !strings.Contains(err.Error(), "配置文件过大") {
+		t.Fatalf("BackupFile() error = %v", err)
+	}
+}

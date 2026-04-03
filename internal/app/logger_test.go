@@ -1,8 +1,11 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSanitizeForLog(t *testing.T) {
@@ -42,6 +45,24 @@ func TestSanitizeForLog(t *testing.T) {
 			contains:    []string{"[REDACTED]"},
 			notContains: []string{"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"},
 		},
+		{
+			name:        "api key sanitization",
+			input:       "api_key=super-secret-value",
+			contains:    []string{"api_key=[REDACTED]"},
+			notContains: []string{"super-secret-value"},
+		},
+		{
+			name:        "session token sanitization",
+			input:       "__Secure-next-auth.session-token=very-secret-cookie",
+			contains:    []string{"session-token=[REDACTED]"},
+			notContains: []string{"very-secret-cookie"},
+		},
+		{
+			name:        "openai key sanitization",
+			input:       "using sk-proj-abc123secret456 for request",
+			contains:    []string{"[REDACTED]"},
+			notContains: []string{"sk-proj-abc123secret456"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -58,5 +79,40 @@ func TestSanitizeForLog(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetRecentLogsReadsTailOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	logDir, err := LogDir()
+	if err != nil {
+		t.Fatalf("LogDir() error = %v", err)
+	}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	logFile := filepath.Join(logDir, time.Now().Format("2006-01-02")+".log")
+
+	var builder strings.Builder
+	for builder.Len() < maxRecentLogReadBytes+4096 {
+		builder.WriteString("old-line-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n")
+	}
+	builder.WriteString("tail-one\n")
+	builder.WriteString("tail-two\n")
+	if err := os.WriteFile(logFile, []byte(builder.String()), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	logs, err := GetRecentLogs(2)
+	if err != nil {
+		t.Fatalf("GetRecentLogs() error = %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("len(logs) = %d, want 2 (%v)", len(logs), logs)
+	}
+	if logs[0] != "tail-one" || logs[1] != "tail-two" {
+		t.Fatalf("GetRecentLogs() = %v, want tail lines", logs)
 	}
 }

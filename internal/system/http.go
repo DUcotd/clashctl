@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"clashctl/internal/netsec"
 )
 
 const (
@@ -54,6 +56,9 @@ func NewHTTPClient(timeout time.Duration, direct bool) *http.Client {
 			if len(via) >= MaxRedirects {
 				return fmt.Errorf("重定向次数过多 (超过 %d 次)，可能存在重定向循环", MaxRedirects)
 			}
+			if err := validateRedirectTarget(req, timeout); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -91,7 +96,23 @@ func NewHTTPClientWithRedirectLimit(timeout time.Duration, direct bool, maxRedir
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("重定向次数过多 (超过 %d 次)", maxRedirects)
 			}
+			if err := validateRedirectTarget(req, timeout); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
+}
+
+func validateRedirectTarget(req *http.Request, timeout time.Duration) error {
+	if req == nil || req.URL == nil {
+		return fmt.Errorf("重定向目标无效")
+	}
+	if _, err := netsec.ValidateRemoteHTTPURL(req.URL.String(), netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return fmt.Errorf("拒绝不安全的重定向目标: %w", err)
+	}
+	return nil
 }

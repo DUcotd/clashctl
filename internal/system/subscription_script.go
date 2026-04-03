@@ -234,7 +234,26 @@ func readPreparedSubscriptionBody(path string) ([]byte, error) {
 	if info.Size() > MaxPreparedSubscriptionBytes {
 		return nil, fmt.Errorf("订阅内容过大: %d bytes (最大允许 %d bytes)", info.Size(), MaxPreparedSubscriptionBytes)
 	}
-	return os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, MaxPreparedSubscriptionBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > MaxPreparedSubscriptionBytes {
+		return nil, fmt.Errorf("订阅内容过大: %d bytes (最大允许 %d bytes)", len(data), MaxPreparedSubscriptionBytes)
+	}
+	return data, nil
+}
+
+// ReadPreparedSubscriptionBody reads a local subscription file with the same
+// size limit used for prepared/remote subscription content.
+func ReadPreparedSubscriptionBody(path string) ([]byte, error) {
+	return readPreparedSubscriptionBody(path)
 }
 
 func ensurePathWithinBase(baseDir, path string) (string, error) {

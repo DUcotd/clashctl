@@ -303,6 +303,26 @@ func TestRemoveShellProxyEnv(t *testing.T) {
 	}
 }
 
+func TestPersistShellProxyEnvRejectsOversizedProfile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/bash")
+
+	profilePath := filepath.Join(home, ".bashrc")
+	oversized := strings.Repeat("a", maxShellProfileBytes+1)
+	if err := os.WriteFile(profilePath, []byte(oversized), 0600); err != nil {
+		t.Fatalf("WriteFile(profile) error: %v", err)
+	}
+
+	_, err := PersistShellProxyEnv(7890)
+	if err == nil {
+		t.Fatal("PersistShellProxyEnv() should reject oversized shell profile")
+	}
+	if !strings.Contains(err.Error(), "shell 配置文件过大") {
+		t.Fatalf("PersistShellProxyEnv() error = %v", err)
+	}
+}
+
 func TestCanWritePathDoesNotDeleteExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

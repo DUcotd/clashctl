@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 const (
 	clashctlProxyBlockStart = "# >>> clashctl proxy >>>"
 	clashctlProxyBlockEnd   = "# <<< clashctl proxy <<<"
+	maxShellProfileBytes    = 1 * 1024 * 1024
 )
 
 // ShellProxyResult describes the managed shell proxy files.
@@ -118,7 +120,7 @@ func proxyScriptPath() (string, error) {
 }
 
 func upsertManagedBlock(path, block string) error {
-	content, err := os.ReadFile(path)
+	content, err := readManagedShellFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("读取 shell 配置失败: %w", err)
 	}
@@ -130,7 +132,7 @@ func upsertManagedBlock(path, block string) error {
 }
 
 func removeManagedBlock(path string) error {
-	content, err := os.ReadFile(path)
+	content, err := readManagedShellFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -175,4 +177,29 @@ func writeFilePreserveMode(path string, data []byte, defaultMode os.FileMode) er
 		return err
 	}
 	return WriteFileAtomic(path, data, mode)
+}
+
+func readManagedShellFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxShellProfileBytes {
+		return nil, fmt.Errorf("shell 配置文件过大: %d bytes (最大允许 %d bytes)", info.Size(), maxShellProfileBytes)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxShellProfileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxShellProfileBytes {
+		return nil, fmt.Errorf("shell 配置文件过大: %d bytes (最大允许 %d bytes)", len(data), maxShellProfileBytes)
+	}
+	return data, nil
 }

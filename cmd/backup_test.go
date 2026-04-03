@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"clashctl/internal/app"
+	"clashctl/internal/config"
 	"clashctl/internal/core"
 )
 
@@ -293,5 +294,28 @@ func TestRunRestoreRejectsInvalidMihomoBackup(t *testing.T) {
 	}
 	if string(got) != string(original) {
 		t.Fatalf("target content = %q, want %q", string(got), string(original))
+	}
+}
+
+func TestRunRestoreRejectsOversizedBackup(t *testing.T) {
+	home := setupCmdTestHome(t)
+	_ = writeTestAppConfig(t, home)
+
+	backupDir := backupDirForHome(home)
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	backupName := "config-oversized.yaml"
+	oversized := strings.Repeat("a", config.MaxConfigFileSize+1)
+	if err := os.WriteFile(filepath.Join(backupDir, backupName), []byte(oversized), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	err := runRestore(nil, []string{backupName})
+	if err == nil {
+		t.Fatal("runRestore() should reject oversized backups")
+	}
+	if !strings.Contains(err.Error(), "配置文件过大") {
+		t.Fatalf("runRestore() error = %v", err)
 	}
 }

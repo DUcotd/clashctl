@@ -2,7 +2,6 @@
 package mihomo
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,23 +45,27 @@ type ProxyInventory struct {
 
 // GetAllProxyGroups returns all proxy groups from the controller API.
 func (c *Client) GetAllProxyGroups() (map[string]ProxyGroup, error) {
-	url := fmt.Sprintf("%s/proxies", c.BaseURL)
-	resp, err := c.HTTP.Get(url)
+	apiURL := fmt.Sprintf("%s/proxies", c.BaseURL)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接 controller API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, APIResponseMaxSize))
 		return nil, fmt.Errorf("controller API 返回 %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		Proxies map[string]ProxyGroup `json:"proxies"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("解析 API 响应失败: %w", err)
+	if err := decodeAPIJSON(resp.Body, &result); err != nil {
+		return nil, err
 	}
 
 	groups := make(map[string]ProxyGroup)
@@ -123,22 +126,27 @@ type ProxyInfo struct {
 
 // GetAllProxies returns all individual proxies (not just groups) with their types.
 func (c *Client) GetAllProxies() (map[string]ProxyInfo, error) {
-	url := fmt.Sprintf("%s/proxies", c.BaseURL)
-	resp, err := c.HTTP.Get(url)
+	apiURL := fmt.Sprintf("%s/proxies", c.BaseURL)
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("构建请求失败: %w", err)
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接 controller API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("controller API 返回 %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, APIResponseMaxSize))
+		return nil, fmt.Errorf("controller API 返回 %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		Proxies map[string]ProxyInfo `json:"proxies"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("解析 API 响应失败: %w", err)
+	if err := decodeAPIJSON(resp.Body, &result); err != nil {
+		return nil, err
 	}
 
 	return result.Proxies, nil

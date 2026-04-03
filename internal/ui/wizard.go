@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"clashctl/internal/system"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -119,7 +121,7 @@ func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSv
 	inlineInput.ShowLineNumbers = false
 	inlineInput.SetWidth(60)
 	inlineInput.SetHeight(8)
-	inlineInput.CharLimit = 0
+	inlineInput.CharLimit = int(system.MaxPreparedSubscriptionBytes)
 	inlineInput.MaxHeight = 12
 
 	fields := []string{
@@ -412,6 +414,9 @@ func (m *WizardModel) commitSubscriptionSelection() string {
 		input := strings.TrimSpace(m.inlineInput.Value())
 		if input == "" {
 			return "请粘贴订阅内容后再继续"
+		}
+		if len(input) > int(system.MaxPreparedSubscriptionBytes) {
+			return fmt.Sprintf("粘贴内容过大: %d bytes (最大允许 %d bytes)", len(input), system.MaxPreparedSubscriptionBytes)
 		}
 		m.inlineContent = input
 		return ""

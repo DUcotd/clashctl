@@ -387,11 +387,32 @@ func finishImportReport(report *importRunReport, err error) error {
 
 func readImportSource(path string) ([]byte, string, error) {
 	if path == "-" {
-		data, err := io.ReadAll(os.Stdin)
+		data, err := readImportSourceWithLimit(os.Stdin, "stdin")
 		return data, "stdin", err
 	}
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, path, err
+	}
+	defer f.Close()
+
+	if info, err := f.Stat(); err == nil && info.Size() > system.MaxPreparedSubscriptionBytes {
+		return nil, path, fmt.Errorf("订阅文件过大: %d bytes (最大允许 %d bytes)", info.Size(), system.MaxPreparedSubscriptionBytes)
+	}
+
+	data, err := readImportSourceWithLimit(f, path)
 	return data, path, err
+}
+
+func readImportSourceWithLimit(r io.Reader, source string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, system.MaxPreparedSubscriptionBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > system.MaxPreparedSubscriptionBytes {
+		return nil, fmt.Errorf("订阅文件过大: %d bytes (最大允许 %d bytes)", len(data), system.MaxPreparedSubscriptionBytes)
+	}
+	return data, nil
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {

@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const MaxJSONResponseBytes = 4 * 1024 * 1024
+
 // FetchJSON fetches a JSON document and decodes it into dest.
 func FetchJSON(url string, timeout time.Duration, dest any) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -34,7 +36,15 @@ func FetchJSONWithDoer(doer HTTPDoer, req *http.Request, dest any) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(dest); err != nil {
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxJSONResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+	if len(data) > MaxJSONResponseBytes {
+		return fmt.Errorf("JSON 响应体过大 (超过 %d bytes)", MaxJSONResponseBytes)
+	}
+
+	if err := json.Unmarshal(data, dest); err != nil {
 		return fmt.Errorf("解析响应失败: %w", err)
 	}
 

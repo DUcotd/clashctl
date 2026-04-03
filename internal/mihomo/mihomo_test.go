@@ -344,6 +344,46 @@ func TestTestNodeEscapesPath(t *testing.T) {
 	}
 }
 
+func TestGetProxyGroupRejectsOversizedResponse(t *testing.T) {
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"name":"PROXY","type":"select","now":"A","all":["` + strings.Repeat("A", APIResponseMaxSize) + `"]}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})}
+
+	_, err := client.GetProxyGroup("PROXY")
+	if err == nil {
+		t.Fatal("GetProxyGroup() should reject oversized response bodies")
+	}
+	if !strings.Contains(err.Error(), "API 响应体过大") {
+		t.Fatalf("GetProxyGroup() error = %v", err)
+	}
+}
+
+func TestVersionRejectsOversizedResponse(t *testing.T) {
+	client := NewClient("http://example.invalid")
+	client.HTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"version":"` + strings.Repeat("v", APIResponseMaxSize) + `"}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})}
+
+	_, err := client.Version()
+	if err == nil {
+		t.Fatal("Version() should reject oversized response bodies")
+	}
+	if !strings.Contains(err.Error(), "API 响应体过大") {
+		t.Fatalf("Version() error = %v", err)
+	}
+}
+
 func TestTestProxyGroupNodes(t *testing.T) {
 	var requestedTargets []string
 	var requestedTargetsMu sync.Mutex
