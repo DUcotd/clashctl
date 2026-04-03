@@ -23,7 +23,7 @@ func TestScreenStepLabel(t *testing.T) {
 		{ScreenPreview, "步骤 3/7: 配置预览"},
 		{ScreenExecution, "步骤 4/7: 正在配置..."},
 		{ScreenResult, "步骤 5/7: 执行结果"},
-		{ScreenImportLocal, "步骤 5/7: 导入本地订阅"},
+		{ScreenImportLocal, "附加步骤: 导入本地订阅"},
 		{ScreenGroupSelect, "步骤 6/7: 选择代理组"},
 		{ScreenNodeSelect, "步骤 7/7: 选择节点"},
 	}
@@ -179,11 +179,42 @@ func TestNodeManagerQQuits(t *testing.T) {
 
 	updated, cmd := manager.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	got := updated.(NodeManagerModel)
-	if !got.quitting {
-		t.Fatal("quitting should be true")
+	if got.quitConfirm != true {
+		t.Fatal("quitConfirm should be true on first q")
 	}
-	if cmd == nil {
-		t.Fatal("quit command should be returned")
+	if cmd != nil {
+		t.Fatal("no command should be returned on quit confirm")
+	}
+
+	updated2, cmd2 := got.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	got2 := updated2.(NodeManagerModel)
+	if !got2.quitting {
+		t.Fatal("quitting should be true after confirming")
+	}
+	if cmd2 == nil {
+		t.Fatal("quit command should be returned after confirming")
+	}
+}
+
+func TestNodeManagerQCancel(t *testing.T) {
+	manager := NewNodeManager(core.DefaultAppConfig())
+
+	updated, _ := manager.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(NodeManagerModel)
+	if got.quitConfirm != true {
+		t.Fatal("quitConfirm should be true")
+	}
+
+	updated2, cmd2 := got.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	got2 := updated2.(NodeManagerModel)
+	if got2.quitConfirm != false {
+		t.Fatal("quitConfirm should be false after canceling")
+	}
+	if got2.quitting {
+		t.Fatal("quitting should not be set after canceling")
+	}
+	if cmd2 != nil {
+		t.Fatal("no command should be returned on cancel")
 	}
 }
 
@@ -484,5 +515,399 @@ func TestPreviewSourceForInlineContent(t *testing.T) {
 func TestProtocolBadgeNormalizesCase(t *testing.T) {
 	if got := protocolBadge("vless"); !strings.Contains(got, "Vless") {
 		t.Fatalf("protocolBadge(vless) = %q", got)
+	}
+}
+
+func TestParseYesNo(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"是", true},
+		{"yes", true},
+		{"Yes", true},
+		{"YES", true},
+		{"true", true},
+		{"True", true},
+		{"1", true},
+		{"否", false},
+		{"no", false},
+		{"false", false},
+		{"0", false},
+		{"", false},
+		{" maybe ", false},
+	}
+	for _, tt := range tests {
+		if got := parseYesNo(tt.input); got != tt.want {
+			t.Errorf("parseYesNo(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestDelayStyle(t *testing.T) {
+	tests := []struct {
+		delay int
+		name  string
+	}{
+		{0, "unknown"},
+		{-1, "bad"},
+		{50, "good"},
+		{99, "good"},
+		{100, "ok"},
+		{299, "ok"},
+		{300, "ok"},
+		{999, "ok"},
+		{1000, "bad"},
+		{5000, "bad"},
+	}
+	for _, tt := range tests {
+		got := delayStyle(tt.delay).Render("test")
+		if got == "" {
+			t.Errorf("delayStyle(%d) returned empty", tt.delay)
+		}
+	}
+}
+
+func TestProtocolBadgeEdgeCases(t *testing.T) {
+	tests := []struct {
+		input    string
+		contains string
+	}{
+		{"VLESS", "Vless"},
+		{"  hy2  ", "Hy2"},
+		{"Trojan", "Trojan"},
+		{"vmess", "VMess"},
+		{"SS", "SS"},
+		{"unknown-protocol-very-long-name", "unknown-pr"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := protocolBadge(tt.input)
+		if tt.contains != "" && !strings.Contains(got, tt.contains) {
+			t.Errorf("protocolBadge(%q) = %q, want to contain %q", tt.input, got, tt.contains)
+		}
+	}
+}
+
+func TestWrapTextEdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		text  string
+		width int
+		check func([]string) bool
+	}{
+		{"empty", "", 20, func(lines []string) bool { return len(lines) == 1 && lines[0] == "" }},
+		{"short", "hi", 20, func(lines []string) bool { return len(lines) == 1 && lines[0] == "hi" }},
+		{"narrow width", "hello world foo bar baz", 10, func(lines []string) bool { return len(lines) >= 2 }},
+		{"width less than 8", "hello world", 4, func(lines []string) bool { return len(lines) == 1 }},
+		{"cjk text", "你好世界", 6, func(lines []string) bool { return len(lines) >= 1 }},
+		{"only newlines", "\n\n", 20, func(lines []string) bool { return len(lines) == 3 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wrapText(tt.text, tt.width)
+			if !tt.check(got) {
+				t.Errorf("wrapText(%q, %d) = %#v, check failed", tt.text, tt.width, got)
+			}
+		})
+	}
+}
+
+func TestFormatKV(t *testing.T) {
+	got := formatKV("订阅 URL", "https://example.com/sub", 60)
+	if !strings.Contains(got, "订阅 URL") {
+		t.Fatalf("formatKV should contain label, got %q", got)
+	}
+	if !strings.Contains(got, "https://example.com/sub") {
+		t.Fatalf("formatKV should contain value, got %q", got)
+	}
+}
+
+func TestFormatKVEmptyValue(t *testing.T) {
+	got := formatKV("Label", "", 40)
+	if !strings.Contains(got, "Label:") {
+		t.Fatalf("formatKV with empty value should contain label, got %q", got)
+	}
+}
+
+func TestApplySort(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.nodes = []NodeItem{
+		{Name: "Zebra", Protocol: "vless", Delay: 200},
+		{Name: "Alpha", Protocol: "trojan", Delay: 50},
+		{Name: "Beta", Protocol: "vless", Delay: 0},
+	}
+	m.filteredNodes = append([]NodeItem(nil), m.nodes...)
+
+	m.sortMode = NodeSortDelay
+	m.applySort()
+	if m.filteredNodes[0].Name != "Alpha" {
+		t.Errorf("sort by delay: first = %q, want Alpha", m.filteredNodes[0].Name)
+	}
+	if m.filteredNodes[2].Name != "Beta" {
+		t.Errorf("sort by delay: last (delay=0) = %q, want Beta", m.filteredNodes[2].Name)
+	}
+
+	m.sortMode = NodeSortName
+	m.filteredNodes = append([]NodeItem(nil), m.nodes...)
+	m.applySort()
+	if m.filteredNodes[0].Name != "Alpha" {
+		t.Errorf("sort by name: first = %q, want Alpha", m.filteredNodes[0].Name)
+	}
+
+	m.sortMode = NodeSortProtocol
+	m.filteredNodes = append([]NodeItem(nil), m.nodes...)
+	m.applySort()
+	if m.filteredNodes[0].Protocol != "trojan" {
+		t.Errorf("sort by protocol: first = %q, want trojan", m.filteredNodes[0].Protocol)
+	}
+}
+
+func TestCycleSortMode(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.nodes = []NodeItem{
+		{Name: "B", Protocol: "vless", Delay: 200},
+		{Name: "A", Protocol: "trojan", Delay: 50},
+	}
+
+	expected := []NodeSortMode{NodeSortDelay, NodeSortName, NodeSortProtocol, NodeSortDefault}
+	for i, want := range expected {
+		m.cycleSortMode()
+		if m.sortMode != want {
+			t.Errorf("cycle %d: sortMode = %v, want %v", i+1, m.sortMode, want)
+		}
+	}
+	if m.filteredNodes != nil {
+		t.Error("after cycling back to default, filteredNodes should be nil")
+	}
+}
+
+func TestHandleMouseClick(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{
+		groups: []GroupItem{
+			{Name: "PROXY", Type: "select", NodeCount: 2},
+			{Name: "AUTO", Type: "url-test", NodeCount: 3},
+		},
+	}, false)
+	m.width = 80
+	m.height = 24
+	m.screen = ScreenGroupSelect
+	m.loading = false
+	m.ensureViewport()
+
+	msg := tea.MouseMsg{Y: 5, Type: tea.MouseRelease, Action: tea.MouseActionPress}
+	updated, _ := m.handleMouseClick(msg)
+	got := updated.(NodeManagerModel)
+	if got.groupIndex != 0 {
+		t.Errorf("click on first group: groupIndex = %d, want 0", got.groupIndex)
+	}
+
+	negMsg := tea.MouseMsg{Y: -1, Type: tea.MouseRelease, Action: tea.MouseActionPress}
+	updated2, _ := got.handleMouseClick(negMsg)
+	got2 := updated2.(NodeManagerModel)
+	if got2.groupIndex != 0 {
+		t.Errorf("negative Y click should not change groupIndex, got %d", got2.groupIndex)
+	}
+}
+
+func TestRenderStatusBar(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{
+		groups: []GroupItem{{Name: "PROXY", Type: "select", NodeCount: 2}},
+	}, false)
+	m.width = 80
+	m.height = 24
+	m.screen = ScreenGroupSelect
+	m.loading = false
+	m.groups = []GroupItem{{Name: "PROXY", Type: "select", NodeCount: 2}}
+	m.ensureViewport()
+
+	got := m.renderStatusBar()
+	if !strings.Contains(got, "PROXY") {
+		t.Fatalf("status bar missing group name: %s", got)
+	}
+
+	m.screen = ScreenNodeSelect
+	m.selectedGroup = "PROXY"
+	m.nodes = []NodeItem{{Name: "Node A", Delay: 50}}
+	m.nodeIndex = 0
+	got2 := m.renderStatusBar()
+	if !strings.Contains(got2, "节点: 1/1") {
+		t.Fatalf("status bar missing node info: %s", got2)
+	}
+}
+
+func TestRenderStatusBarNarrowTerminal(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.width = 2
+	m.height = 10
+	m.screen = ScreenGroupSelect
+
+	got := m.renderStatusBar()
+	if got != "" {
+		t.Fatalf("status bar on narrow terminal should be empty, got %q", got)
+	}
+}
+
+func TestRenderStatusBarEmptyNodes(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.width = 80
+	m.height = 24
+	m.screen = ScreenNodeSelect
+	m.selectedGroup = "PROXY"
+	m.nodes = []NodeItem{}
+
+	got := m.renderStatusBar()
+	if strings.Contains(got, "1/0") {
+		t.Fatalf("status bar should not show 1/0 for empty nodes: %s", got)
+	}
+	if !strings.Contains(got, "节点: 0 个") {
+		t.Fatalf("status bar should show 0 nodes: %s", got)
+	}
+}
+
+func TestViewportFollowSelected(t *testing.T) {
+	v := viewportState{
+		vpReady:       true,
+		screenOffsets: make(map[Screen]int),
+	}
+	v.vp.Width = 40
+	v.vp.Height = 5
+	v.vp.SetContent("line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10")
+
+	v.followSelected(8)
+	if v.vp.YOffset != 4 {
+		t.Errorf("followSelected(8) with height 5: YOffset = %d, want 4", v.vp.YOffset)
+	}
+
+	v.followSelected(0)
+	if v.vp.YOffset != 0 {
+		t.Errorf("followSelected(0): YOffset = %d, want 0", v.vp.YOffset)
+	}
+}
+
+func TestViewportScroll(t *testing.T) {
+	v := viewportState{
+		vpReady:       true,
+		screenOffsets: make(map[Screen]int),
+	}
+	v.vp.Width = 40
+	v.vp.Height = 5
+	v.vp.SetContent("line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10")
+
+	v.scroll("down")
+	if v.vp.YOffset != 1 {
+		t.Errorf("scroll down: YOffset = %d, want 1", v.vp.YOffset)
+	}
+
+	v.scroll("up")
+	if v.vp.YOffset != 0 {
+		t.Errorf("scroll up: YOffset = %d, want 0", v.vp.YOffset)
+	}
+
+	v.scroll("end")
+	if v.vp.YOffset+v.vp.Height < v.vp.TotalLineCount() {
+		t.Errorf("scroll end: YOffset+Height = %d, should reach bottom", v.vp.YOffset+v.vp.Height)
+	}
+
+	v.scroll("home")
+	if v.vp.YOffset != 0 {
+		t.Errorf("scroll home: YOffset = %d, want 0", v.vp.YOffset)
+	}
+}
+
+func TestNodeManagerQuitConfirm(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(NodeManagerModel)
+	if !got.quitConfirm {
+		t.Fatal("quitConfirm should be true on first q")
+	}
+	if cmd != nil {
+		t.Fatal("no command on quit confirm")
+	}
+
+	updated2, cmd2 := got.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	got2 := updated2.(NodeManagerModel)
+	if got2.quitConfirm {
+		t.Fatal("quitConfirm should be false after cancel")
+	}
+	if cmd2 != nil {
+		t.Fatal("no command on cancel")
+	}
+
+	updated3, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got3 := updated3.(NodeManagerModel)
+	updated4, cmd4 := got3.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	got4 := updated4.(NodeManagerModel)
+	if !got4.quitting {
+		t.Fatal("quitting should be true after confirm")
+	}
+	if cmd4 == nil {
+		t.Fatal("quit command expected after confirm")
+	}
+}
+
+func TestNodeSortModeLabel(t *testing.T) {
+	tests := []struct {
+		mode NodeSortMode
+		want string
+	}{
+		{NodeSortDefault, "默认"},
+		{NodeSortDelay, "延迟"},
+		{NodeSortName, "名称"},
+		{NodeSortProtocol, "协议"},
+	}
+	for _, tt := range tests {
+		if got := tt.mode.Label(); got != tt.want {
+			t.Errorf("NodeSortMode(%d).Label() = %q, want %q", tt.mode, got, tt.want)
+		}
+	}
+}
+
+func TestWizardQuitConfirmView(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.quitConfirm = true
+
+	view := wizard.View()
+	if !strings.Contains(view, "确认退出") {
+		t.Fatalf("wizard quit confirm view missing '确认退出': %s", view)
+	}
+}
+
+func TestNodeManagerQuitConfirmView(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.quitConfirm = true
+
+	view := m.View()
+	if !strings.Contains(view, "确认退出") {
+		t.Fatalf("node manager quit confirm view missing '确认退出': %s", view)
+	}
+}
+
+func TestNodeManagerHelpView(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.showHelp = true
+
+	view := m.View()
+	if !strings.Contains(view, "快捷键帮助") {
+		t.Fatalf("node manager help view missing '快捷键帮助': %s", view)
+	}
+	if !strings.Contains(view, "搜索/过滤节点") {
+		t.Fatalf("node manager help view missing '搜索/过滤节点': %s", view)
+	}
+}
+
+func TestPageFeedbackSetInfo(t *testing.T) {
+	f := &pageFeedbackState{}
+	f.setInfo("test info message")
+	if f.messageText != "test info message" {
+		t.Errorf("messageText = %q, want %q", f.messageText, "test info message")
+	}
+	if f.errorText != "" {
+		t.Errorf("errorText should be empty, got %q", f.errorText)
+	}
+	if f.messageTone != feedbackInfo {
+		t.Errorf("messageTone = %v, want %v", f.messageTone, feedbackInfo)
 	}
 }

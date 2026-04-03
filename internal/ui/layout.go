@@ -85,39 +85,9 @@ func renderCard(header string, feedback pageFeedbackState, body, footer string) 
 	return BoxStyle.Render(content)
 }
 
-func renderScrollableCard(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
-	if !state.vpReady {
-		return renderCard(header, feedback, body, footer)
-	}
-	innerWidth, innerHeight := baseViewportSize()
-	vp := state.vp
-	vp.Width = innerWidth
-	headerBlock := HeaderStyle.Render(header)
-	feedbackBlock := feedbackBlock(feedback)
-	footerBlock := HelpStyle.Render(footer)
-	chromeHeight := lineCount(headerBlock) + lineCount(feedbackBlock) + lineCount(footerBlock) + 2
-	contentHeight := max(5, innerHeight-chromeHeight)
-	vp.Height = contentHeight
-	vp.SetContent(body)
-	if off, ok := state.screenOffsets[screen]; ok {
-		vp.SetYOffset(off)
-	}
-	scrollHint := ""
-	if vp.TotalLineCount() > vp.Height {
-		scrollHint = InfoStyle.Render(fmt.Sprintf("位置 %d/%d", min(vp.YOffset+vp.Height, vp.TotalLineCount()), vp.TotalLineCount())) + "\n"
-	}
-	content := headerBlock
-	if feedbackBlock != "" {
-		content += "\n\n" + feedbackBlock
-	}
-	content += "\n\n" + vp.View()
-	if footer != "" {
-		content += "\n" + scrollHint + footerBlock
-	}
-	return BoxStyle.Render(content)
-}
+const minViewportContentHeight = 5
 
-func renderSelectableCard(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
+func renderCardWithViewport(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
 	if !state.vpReady {
 		return renderCard(header, feedback, body, footer)
 	}
@@ -128,13 +98,17 @@ func renderSelectableCard(state viewportState, screen Screen, baseViewportSize f
 	feedbackBlock := feedbackBlock(feedback)
 	footerBlock := HelpStyle.Render(footer)
 	chromeHeight := lineCount(headerBlock) + lineCount(feedbackBlock) + lineCount(footerBlock) + 2
-	contentHeight := max(5, innerHeight-chromeHeight)
+	contentHeight := max(minViewportContentHeight, innerHeight-chromeHeight)
 	vp.Height = contentHeight
 	vp.SetContent(body)
-	if selectedIndex < vp.YOffset {
-		vp.SetYOffset(selectedIndex)
-	} else if selectedIndex >= vp.YOffset+vp.Height {
-		vp.SetYOffset(selectedIndex - vp.Height + 1)
+	if selectedIndex >= 0 {
+		if selectedIndex < vp.YOffset {
+			vp.SetYOffset(selectedIndex)
+		} else if selectedIndex >= vp.YOffset+vp.Height {
+			vp.SetYOffset(selectedIndex - vp.Height + 1)
+		} else if off, ok := state.screenOffsets[screen]; ok {
+			vp.SetYOffset(off)
+		}
 	} else if off, ok := state.screenOffsets[screen]; ok {
 		vp.SetYOffset(off)
 	}
@@ -153,20 +127,50 @@ func renderSelectableCard(state viewportState, screen Screen, baseViewportSize f
 	return BoxStyle.Render(content)
 }
 
+func renderStaticCard(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
+	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, -1)
+}
+
+func renderScrollablePage(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
+	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, -1)
+}
+
+func renderSelectablePage(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
+	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, selectedIndex)
+}
+
 func isQuitKey(msg teaKey) bool {
 	key := msg.String()
 	return key == "ctrl+c" || key == "q"
 }
 
-func isScrollKey(key string) bool {
-	switch key {
-	case "up", "k", "down", "j", "pgup", "pgdown", "home", "end":
-		return true
-	default:
-		return false
-	}
-}
-
 type teaKey interface {
 	String() string
+}
+
+func shouldDismissHelp(key string) bool {
+	return key == "esc" || key == "?" || key == "enter"
+}
+
+func handleQuitConfirm(key string, quitConfirm *bool) (quit bool, cancel bool) {
+	if *quitConfirm {
+		if key == "y" || key == "enter" {
+			return true, false
+		}
+		if key == "n" || key == "esc" {
+			*quitConfirm = false
+			return false, true
+		}
+		return false, false
+	}
+	return false, false
+}
+
+func cardChromeHeight(header string, feedback pageFeedbackState, footer string, extraLines int) int {
+	h := lineCount(HeaderStyle.Render(header))
+	h += lineCount(feedbackBlock(feedback))
+	h += lineCount(HelpStyle.Render(footer))
+	h += 2
+	h += extraLines
+	return h
 }

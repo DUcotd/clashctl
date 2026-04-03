@@ -4,8 +4,10 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 
 	"clashctl/internal/mihomo"
 	"clashctl/internal/system"
@@ -30,7 +32,13 @@ func (m WizardModel) viewWelcome() string {
 }
 
 func (m WizardModel) viewSubscription() string {
-	m.inlineInput.SetWidth(max(40, m.width-16))
+	inputWidth := max(40, m.width-16)
+	m.urlInput.Width = inputWidth
+	m.fileInput.Width = inputWidth
+	// SetWidth/SetHeight on value receiver: mutations are discarded after render,
+	// but the modified copy is used for m.inlineInput.View() below, so this works.
+	// If future code depends on persisted dimensions, this must be refactored.
+	m.inlineInput.SetWidth(inputWidth)
 	m.inlineInput.SetHeight(8)
 
 	selector := renderSourceSelector(m.sourceMode)
@@ -59,7 +67,7 @@ func (m WizardModel) viewSubscription() string {
 }
 
 func (m WizardModel) viewMode() string {
-	options := []string{"TUN 模式（全局代理，需 root）", "mixed-port 模式（推荐，兼容性好）"}
+	options := []string{"TUN 模式（全局代理，需 CAP_NET_ADMIN）", "mixed-port 模式（推荐，兼容性好）"}
 
 	var lines []string
 	lines = append(lines, "选择代理运行模式", "")
@@ -258,6 +266,7 @@ func (m WizardModel) viewResult() string {
 }
 
 func (m WizardModel) viewImportLocal() string {
+	m.importInput.Width = max(40, m.width-16)
 	content := strings.Join([]string{
 		InfoStyle.Render("检测到服务器无法成功拉取订阅，建议改用本地导入。"),
 		InfoStyle.Render("支持两类文件：base64 原始订阅，或解码后的 vless:// / trojan:// / hysteria2:// 链接列表。"),
@@ -268,15 +277,15 @@ func (m WizardModel) viewImportLocal() string {
 }
 
 func (m WizardModel) renderStaticCard(header, body, footer string) string {
-	return renderCard(header, m.feedback, body, footer)
+	return renderStaticCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderScrollablePage(header, body, footer string) string {
-	return renderScrollableCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
+	return renderScrollablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderSelectablePage(header, body, footer string, selectedIndex int) string {
-	return renderSelectableCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
+	return renderSelectablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
 }
 
 func lineCount(s string) int {
@@ -287,7 +296,8 @@ func lineCount(s string) int {
 }
 
 func formatKV(label, value string, width int) string {
-	wrapped := wrapText(value, max(20, width-len([]rune(label))-4))
+	labelW := runewidth.StringWidth(label)
+	wrapped := wrapText(value, max(20, width-labelW-4))
 	if len(wrapped) == 0 {
 		return TextStyle.Render(label + ":")
 	}
@@ -298,7 +308,7 @@ func formatKV(label, value string, width int) string {
 			out.WriteString(InputStyle.Render(line))
 		} else {
 			out.WriteString("\n")
-			out.WriteString(strings.Repeat(" ", len([]rune(label))+2))
+			out.WriteString(strings.Repeat(" ", labelW+2))
 			out.WriteString(InputStyle.Render(line))
 		}
 	}
@@ -316,34 +326,44 @@ func wrapText(text string, width int) []string {
 			out = append(out, "")
 			continue
 		}
-		for len([]rune(line)) > width {
-			cut := width
-			runes := []rune(line)
-			for i := width; i > width/2; i-- {
-				if runes[i] == ' ' {
-					cut = i
+		for runewidth.StringWidth(line) > width {
+			cut := 0
+			w := 0
+			for i, r := range line {
+				cw := runewidth.RuneWidth(r)
+				if w+cw > width {
+					break
+				}
+				cut = i + utf8.RuneLen(r)
+				w += cw
+			}
+			if cut == 0 {
+				cut = len(line)
+			}
+			spaceCut := cut
+			for i := cut; i > cut/2 && i > 0; i-- {
+				if line[i-1] == ' ' {
+					spaceCut = i
 					break
 				}
 			}
-			out = append(out, strings.TrimSpace(string(runes[:cut])))
-			line = strings.TrimSpace(string(runes[cut:]))
+			out = append(out, strings.TrimSpace(line[:spaceCut]))
+			line = strings.TrimSpace(line[spaceCut:])
+			if line == "" {
+				break
+			}
 		}
-		out = append(out, line)
+		if line != "" {
+			out = append(out, line)
+		}
 	}
 	return out
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func delayStyle(delay int) lipgloss.Style {
 	switch {
-	case delay < 0:
-		return DelayBadStyle
+	case delay == 0:
+		return DelayUnknownStyle
 	case delay < 100:
 		return DelayGoodStyle
 	case delay < 300:
@@ -360,7 +380,8 @@ func groupIcon(t string) string {
 }
 
 func protocolBadge(p string) string {
-	switch strings.ToLower(strings.TrimSpace(p)) {
+	clean := strings.TrimSpace(p)
+	switch strings.ToLower(clean) {
 	case "vless":
 		return ProtocolVlessStyle.Render("Vless")
 	case "hysteria2", "hy2":
@@ -372,7 +393,10 @@ func protocolBadge(p string) string {
 	case "shadowsocks", "ss":
 		return ProtocolSSStyle.Render("SS")
 	default:
-		return ProtocolUnknownStyle.Render(p)
+		if len(clean) > 10 {
+			clean = clean[:10]
+		}
+		return ProtocolUnknownStyle.Render(clean)
 	}
 }
 
@@ -381,4 +405,62 @@ func boolToYesNo(b bool) string {
 		return "是"
 	}
 	return "否"
+}
+
+func parseYesNo(s string) bool {
+	s = strings.ToLower(strings.TrimSpace(s))
+	return s == "是" || s == "yes" || s == "true" || s == "1"
+}
+
+func (m WizardModel) viewQuitConfirm() string {
+	var d strings.Builder
+	d.WriteString(HeaderStyle.Render("确认退出"))
+	d.WriteString("\n\n")
+	d.WriteString(WarningStyle.Render("确定要退出配置向导吗？"))
+	d.WriteString("\n")
+	d.WriteString(InfoStyle.Render("已输入的内容将不会被保存。"))
+	d.WriteString("\n\n")
+	d.WriteString(HelpStyle.Render("y / Enter 确认退出  │  n / Esc 取消"))
+	return BoxStyle.Render(d.String())
+}
+
+func (m WizardModel) viewWizardHelp() string {
+	var help strings.Builder
+	help.WriteString(HeaderStyle.Render("快捷键帮助"))
+	help.WriteString("\n\n")
+
+	help.WriteString(TextStyle.Render("全局操作:") + "\n")
+	help.WriteString(InfoStyle.Render("  q / Ctrl+C    退出向导") + "\n")
+	help.WriteString(InfoStyle.Render("  ?             显示/隐藏此帮助") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(TextStyle.Render("导航:") + "\n")
+	help.WriteString(InfoStyle.Render("  Enter         确认/下一步") + "\n")
+	help.WriteString(InfoStyle.Render("  Esc           返回上一步 / 退出") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(TextStyle.Render("订阅来源:") + "\n")
+	help.WriteString(InfoStyle.Render("  Tab / →       切换下一个来源") + "\n")
+	help.WriteString(InfoStyle.Render("  Shift+Tab / ← 切换上一个来源") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(TextStyle.Render("模式选择:") + "\n")
+	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    上下选择") + "\n")
+	help.WriteString(InfoStyle.Render("  a             进入高级设置") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(TextStyle.Render("高级设置:") + "\n")
+	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    切换输入框") + "\n")
+	help.WriteString(InfoStyle.Render("  Enter         保存并返回预览") + "\n")
+	help.WriteString(InfoStyle.Render("  Esc           放弃更改并返回预览") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(TextStyle.Render("预览:") + "\n")
+	help.WriteString(InfoStyle.Render("  ↑/↓ 或 j/k    滚动查看") + "\n")
+	help.WriteString(InfoStyle.Render("  Enter         开始执行") + "\n")
+	help.WriteString(InfoStyle.Render("  a             进入高级设置") + "\n")
+	help.WriteString("\n")
+
+	help.WriteString(HelpStyle.Render("按任意键返回"))
+	return BoxStyle.Render(help.String())
 }

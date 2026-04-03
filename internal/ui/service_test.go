@@ -129,6 +129,7 @@ func TestUpdatePreviewStartsStreamingExecution(t *testing.T) {
 	}
 	wizard := newWizardWithServices(core.DefaultAppConfig(), setupSvc, &fakeNodeService{})
 	wizard.screen = ScreenPreview
+	wizard.appCfg.SubscriptionURL = "https://example.com/sub"
 
 	updated, cmd := wizard.updatePreview(keyMsg("enter"))
 	got := updated.(WizardModel)

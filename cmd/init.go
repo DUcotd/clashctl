@@ -36,7 +36,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Create and run the Bubble Tea wizard
 	wizard := ui.NewWizard(appCfg)
-	p := tea.NewProgram(wizard, tea.WithAltScreen())
+	p := tea.NewProgram(wizard, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// Handle signals in a goroutine
 	go func() {

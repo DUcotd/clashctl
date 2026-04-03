@@ -127,7 +127,7 @@ func runTUINodes(cmd *cobra.Command, args []string) error {
 	defer signal.Stop(sigCh)
 
 	manager := ui.NewNodeManager(appCfg)
-	p := tea.NewProgram(manager, tea.WithAltScreen())
+	p := tea.NewProgram(manager, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	go func() {
 		<-sigCh
