@@ -1,28 +1,25 @@
-# Binary
-myproxy
-myproxy-*
-clashctl-*
-*.exe
-
-# Go
+```
+# Dependencies
+go/pkg/
 vendor/
 
-# IDE
-.idea/
-.vscode/
-.codex
-*.swp
-*.swo
-*~
+# Build artifacts
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.dylib
+*.pyc
+*.class
 
-# OS
+# Go build cache
+!*.mod
+!*.sum
+*.cache
+*_test.go
+
+# Distribution / packaging
 .DS_Store
 Thumbs.db
-
-# Config
-*.yaml
-!assets/*.tpl
-clashctl
-
-# Build artifacts
-checksums-sha256.txt
+```
