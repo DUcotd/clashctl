@@ -337,7 +337,8 @@ install_mihomo() {
         die "下载 Mihomo 校验和文件失败，无法验证二进制完整性"
     fi
     if [ -z "$expected_sha" ]; then
-        die "发布缺少 $asset_name 的 SHA256 校验值，拒绝继续安装"
+        warn "发布缺少 $asset_name 的 SHA256 校验值"
+        warn "  将跳过校验继续安装（安全性降低）"
     fi
 
     mkdir -p "$INSTALL_DIR"
