@@ -743,9 +743,10 @@ func (m NodeManagerModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, te
 				m.filteredNodes[i].Selected = (m.filteredNodes[i].Name == switchedName)
 			}
 		}
-	} else {
-		m.feedback.setError("切换失败: " + msg.err)
+		m.quitting = true
+		return m, tea.Quit
 	}
+	m.feedback.setError("切换失败: " + msg.err)
 	return m, nil
 }
 
