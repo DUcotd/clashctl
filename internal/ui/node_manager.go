@@ -9,7 +9,6 @@ import (
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"clashctl/internal/core"
@@ -54,7 +53,7 @@ type nodeInteractionState struct {
 
 // NodeManagerModel is the standalone node management TUI state.
 type NodeManagerModel struct {
-	screen    Screen
+	screen    NodeScreen
 	appCfg    *core.AppConfig
 	width     int
 	height    int
@@ -104,7 +103,7 @@ func newNodeManagerWithService(appCfg *core.AppConfig, nodeSvc NodeService, comp
 	groupSearchInput.TextStyle = InputStyle
 
 	return NodeManagerModel{
-		screen:      ScreenGroupSelect,
+		screen:      NodeScreenGroupSelect,
 		appCfg:      appCfg,
 		title:       "📡 clashctl 节点管理",
 		completed:   completed,
@@ -117,7 +116,7 @@ func newNodeManagerWithService(appCfg *core.AppConfig, nodeSvc NodeService, comp
 			groupSearchInput: groupSearchInput,
 		},
 		viewportState: viewportState{
-			screenOffsets: make(map[Screen]int),
+			screenOffsets: make(map[int]int),
 		},
 	}
 }
@@ -144,12 +143,12 @@ func (m NodeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Type == tea.MouseWheelUp {
 			m.vp.LineUp(3)
-			m.screenOffsets[m.screen] = m.vp.YOffset
+			m.screenOffsets[int(m.screen)] = m.vp.YOffset
 			return m, nil
 		}
 		if msg.Type == tea.MouseWheelDown {
 			m.vp.LineDown(3)
-			m.screenOffsets[m.screen] = m.vp.YOffset
+			m.screenOffsets[int(m.screen)] = m.vp.YOffset
 			return m, nil
 		}
 		if msg.Type == tea.MouseRelease && msg.Action == tea.MouseActionPress {
@@ -157,7 +156,7 @@ func (m NodeManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.vp, cmd = m.vp.Update(msg)
-		m.screenOffsets[m.screen] = m.vp.YOffset
+		m.screenOffsets[int(m.screen)] = m.vp.YOffset
 		return m, cmd
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -191,12 +190,12 @@ func (m NodeManagerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.feedback.setInfo("已取消延迟测试")
 			return m, nil
 		}
-		if m.loading && m.screen == ScreenNodeSelect {
+		if m.loading && m.screen == NodeScreenNodeSelect {
 			m.loading = false
 			m.feedback.setInfo("已取消加载")
 			return m, nil
 		}
-		if m.screen == ScreenGroupSelect {
+		if m.screen == NodeScreenGroupSelect {
 			m.quitConfirm = true
 			return m, nil
 		}
@@ -229,18 +228,18 @@ func (m NodeManagerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleConfirmDialog(msg)
 	}
 
-	if m.screen == ScreenGroupSelect && m.groupSearchInput.Focused() {
+	if m.screen == NodeScreenGroupSelect && m.groupSearchInput.Focused() {
 		return m.handleGroupSearchInput(msg)
 	}
 
-	if m.screen == ScreenNodeSelect && m.searchInput.Focused() {
+	if m.screen == NodeScreenNodeSelect && m.searchInput.Focused() {
 		return m.handleSearchInput(msg)
 	}
 
 	switch m.screen {
-	case ScreenGroupSelect:
+	case NodeScreenGroupSelect:
 		return m.updateGroupSelect(msg)
-	case ScreenNodeSelect:
+	case NodeScreenNodeSelect:
 		return m.updateNodeSelect(msg)
 	default:
 		return m, nil
@@ -248,20 +247,14 @@ func (m NodeManagerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *NodeManagerModel) ensureViewport() {
-	if !m.vpReady {
-		m.vp = viewport.New(1, 1)
-		m.vpReady = true
-	}
-	innerWidth, innerHeight := m.baseViewportSize()
-	m.vp.Width = innerWidth
-	m.vp.Height = innerHeight
-	if off, ok := m.screenOffsets[m.screen]; ok {
+	m.viewportState.ensureSize(m.width, m.height, m.screen.topChrome())
+	if off, ok := m.screenOffsets[int(m.screen)]; ok {
 		m.vp.SetYOffset(off)
 	}
 }
 
-func (m *NodeManagerModel) setScreen(screen Screen) {
-	m.viewportState.switchScreen(m.screen, screen, m.width, m.height, screen.topChrome())
+func (m *NodeManagerModel) setScreen(screen NodeScreen) {
+	m.viewportState.switchScreen(int(m.screen), int(screen), m.width, m.height, screen.topChrome())
 	m.feedback.clear()
 	m.screen = screen
 }
@@ -272,7 +265,7 @@ func (m NodeManagerModel) baseViewportSize() (int, int) {
 
 func (m *NodeManagerModel) scrollViewport(key string) {
 	m.viewportState.scroll(key)
-	m.screenOffsets[m.screen] = m.vp.YOffset
+	m.screenOffsets[int(m.screen)] = m.vp.YOffset
 }
 
 func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -281,22 +274,22 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 	}
 
 	footer := ""
-	if m.screen == ScreenNodeSelect {
+	if m.screen == NodeScreenNodeSelect {
 		footer = "↑/↓ 选择 │ Enter 切换 │ t 测速 │ s 排序 │ / 搜索 │ i 详情 │ g 跳到选中 │ c 复制 │ ? 帮助 │ Esc 返回"
 	} else {
 		footer = "↑/↓ 选择 │ Enter 查看节点 │ / 搜索 │ r 刷新 │ ? 帮助 │ Esc 退出"
 	}
 	headerText := ""
-	if m.screen == ScreenGroupSelect {
+	if m.screen == NodeScreenGroupSelect {
 		headerText = fmt.Sprintf("选择代理组 (%d)", len(m.groups))
 	} else {
 		headerText = fmt.Sprintf("代理组: %s (%d 节点)", m.selectedGroup, len(m.nodes))
 	}
 	extraLines := 0
-	if m.screen == ScreenGroupSelect && (m.groupSearchInput.Focused() || m.groupSearchQuery != "") {
+	if m.screen == NodeScreenGroupSelect && (m.groupSearchInput.Focused() || m.groupSearchQuery != "") {
 		extraLines++
 	}
-	if m.screen == ScreenNodeSelect && (m.searchInput.Focused() || m.searchQuery != "") {
+	if m.screen == NodeScreenNodeSelect && (m.searchInput.Focused() || m.searchQuery != "") {
 		extraLines++
 	}
 	chromeHeight := cardChromeHeight(headerText, m.feedback, footer, extraLines)
@@ -305,7 +298,7 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 	isDoubleClick := now.Sub(m.lastMouseClick) < 300*time.Millisecond
 	m.lastMouseClick = now
 
-	if m.screen == ScreenGroupSelect && !m.loading {
+	if m.screen == NodeScreenGroupSelect && !m.loading {
 		yOffset := m.vp.YOffset
 		idx := msg.Y - chromeHeight + yOffset
 		displayGroups := m.getDisplayGroups()
@@ -323,7 +316,7 @@ func (m NodeManagerModel) handleMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
-	if m.screen == ScreenNodeSelect && !m.loading && !m.testing {
+	if m.screen == NodeScreenNodeSelect && !m.loading && !m.testing {
 		yOffset := m.vp.YOffset
 		displayNodes := m.getDisplayNodes()
 		idx := msg.Y - chromeHeight + yOffset
@@ -689,7 +682,7 @@ func (m NodeManagerModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 			m.showNodeDetail = false
 			return m, nil
 		}
-		m.setScreen(ScreenGroupSelect)
+		m.setScreen(NodeScreenGroupSelect)
 		return m, nil
 	}
 	return m, nil
@@ -768,7 +761,7 @@ func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.
 			break
 		}
 	}
-	m.setScreen(ScreenNodeSelect)
+	m.setScreen(NodeScreenNodeSelect)
 	return m, nil
 }
 
@@ -858,9 +851,9 @@ func (m NodeManagerModel) View() string {
 	}
 
 	switch m.screen {
-	case ScreenGroupSelect:
+	case NodeScreenGroupSelect:
 		b.WriteString(m.viewGroupSelect())
-	case ScreenNodeSelect:
+	case NodeScreenNodeSelect:
 		b.WriteString(m.viewNodeSelect())
 	}
 

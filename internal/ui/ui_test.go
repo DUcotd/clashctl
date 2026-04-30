@@ -11,21 +11,19 @@ import (
 	"clashctl/internal/system"
 )
 
-func TestScreenStepLabel(t *testing.T) {
+func TestWizardScreenStepLabel(t *testing.T) {
 	tests := []struct {
-		screen Screen
+		screen WizardScreen
 		want   string
 	}{
-		{ScreenWelcome, "欢迎"},
-		{ScreenSubscription, "步骤 1/7: 选择订阅来源"},
-		{ScreenMode, "步骤 2/7: 选择运行模式"},
-		{ScreenAdvanced, "可选设置: 高级参数"},
-		{ScreenPreview, "步骤 3/7: 配置预览"},
-		{ScreenExecution, "步骤 4/7: 正在配置..."},
-		{ScreenResult, "步骤 5/7: 执行结果"},
-		{ScreenImportLocal, "附加步骤: 导入本地订阅"},
-		{ScreenGroupSelect, "步骤 6/7: 选择代理组"},
-		{ScreenNodeSelect, "步骤 7/7: 选择节点"},
+		{WizardScreenWelcome, "欢迎"},
+		{WizardScreenSubscription, "步骤 1/5: 选择订阅来源"},
+		{WizardScreenMode, "步骤 2/5: 选择运行模式"},
+		{WizardScreenAdvanced, "可选设置: 高级参数"},
+		{WizardScreenPreview, "步骤 3/5: 配置预览"},
+		{WizardScreenExecution, "步骤 4/5: 正在配置..."},
+		{WizardScreenResult, "步骤 5/5: 执行结果"},
+		{WizardScreenImportLocal, "附加步骤: 导入本地订阅"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -49,7 +47,7 @@ func TestRenderScrollablePage(t *testing.T) {
 	wizard.width = 80
 	wizard.height = 24
 	wizard.ensureViewport()
-	wizard.screen = ScreenResult
+	wizard.screen = WizardScreenResult
 	view := wizard.renderScrollablePage("测试标题", strings.Repeat("一二三四五六七八九十\n", 20), "帮助")
 	if !strings.Contains(view, "测试标题") || !strings.Contains(view, "帮助") {
 		t.Fatalf("renderScrollablePage missing header/footer: %s", view)
@@ -112,8 +110,8 @@ func TestFormatNodeDelay(t *testing.T) {
 func TestNewWizardDefaults(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
 
-	if wizard.screen != ScreenSubscription {
-		t.Errorf("initial screen = %d, want %d", wizard.screen, ScreenSubscription)
+	if wizard.screen != WizardScreenSubscription {
+		t.Errorf("initial screen = %d, want %d", wizard.screen, WizardScreenSubscription)
 	}
 	if wizard.appCfg == nil {
 		t.Fatal("appCfg should not be nil")
@@ -132,8 +130,8 @@ func TestNewWizardDefaults(t *testing.T) {
 func TestNewNodeManagerDefaults(t *testing.T) {
 	manager := NewNodeManager(core.DefaultAppConfig())
 
-	if manager.screen != ScreenGroupSelect {
-		t.Fatalf("screen = %v, want ScreenGroupSelect", manager.screen)
+	if manager.screen != NodeScreenGroupSelect {
+		t.Fatalf("screen = %v, want NodeScreenGroupSelect", manager.screen)
 	}
 	if !manager.loading {
 		t.Fatal("loading should be true")
@@ -162,15 +160,15 @@ func TestStandaloneNodeManagerViewUsesNodeTitle(t *testing.T) {
 
 func TestNodeManagerEscReturnsToGroupSelect(t *testing.T) {
 	manager := NewNodeManager(core.DefaultAppConfig())
-	manager.screen = ScreenNodeSelect
+	manager.screen = NodeScreenNodeSelect
 	manager.loading = false
 	manager.selectedGroup = "PROXY"
 	manager.nodes = []NodeItem{{Name: "Node A"}}
 
 	updated, _ := manager.updateNodeSelect(tea.KeyMsg{Type: tea.KeyEsc})
 	got := updated.(NodeManagerModel)
-	if got.screen != ScreenGroupSelect {
-		t.Fatalf("screen = %v, want ScreenGroupSelect", got.screen)
+	if got.screen != NodeScreenGroupSelect {
+		t.Fatalf("screen = %v, want NodeScreenGroupSelect", got.screen)
 	}
 }
 
@@ -220,7 +218,7 @@ func TestNodeManagerQCancel(t *testing.T) {
 
 func TestNodeManagerSwitchSuccessSetsSuccessFeedback(t *testing.T) {
 	manager := NewNodeManager(core.DefaultAppConfig())
-	manager.screen = ScreenNodeSelect
+	manager.screen = NodeScreenNodeSelect
 	manager.nodes = []NodeItem{{Name: "Node A"}, {Name: "Node B"}}
 	manager.nodeIndex = 1
 
@@ -283,13 +281,13 @@ func TestNewWizardUsesPersistedValues(t *testing.T) {
 
 func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 	wizard.urlInput.SetValue("https://example.com/sub")
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenMode {
-		t.Fatalf("screen = %v, want ScreenMode", got.screen)
+	if got.screen != WizardScreenMode {
+		t.Fatalf("screen = %v, want WizardScreenMode", got.screen)
 	}
 	if got.appCfg.SubscriptionURL != "https://example.com/sub" {
 		t.Fatalf("SubscriptionURL = %q", got.appCfg.SubscriptionURL)
@@ -301,13 +299,13 @@ func TestSubscriptionEnterStartsExecutionForURL(t *testing.T) {
 
 func TestModeEnterUsesQuickPathToPreview(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenMode
+	wizard.screen = WizardScreenMode
 	wizard.modeIndex = 1
 
 	updated, _ := wizard.updateMode(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenPreview {
-		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	if got.screen != WizardScreenPreview {
+		t.Fatalf("screen = %v, want WizardScreenPreview", got.screen)
 	}
 	if got.appCfg.Mode != "mixed" {
 		t.Fatalf("Mode = %q, want mixed", got.appCfg.Mode)
@@ -316,13 +314,13 @@ func TestModeEnterUsesQuickPathToPreview(t *testing.T) {
 
 func TestModeAOpensAdvancedWithoutExtraStep(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenMode
+	wizard.screen = WizardScreenMode
 	wizard.modeIndex = 0
 
 	updated, _ := wizard.updateMode(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	got := updated.(WizardModel)
-	if got.screen != ScreenAdvanced {
-		t.Fatalf("screen = %v, want ScreenAdvanced", got.screen)
+	if got.screen != WizardScreenAdvanced {
+		t.Fatalf("screen = %v, want WizardScreenAdvanced", got.screen)
 	}
 	if got.appCfg.Mode != "tun" {
 		t.Fatalf("Mode = %q, want tun", got.appCfg.Mode)
@@ -331,14 +329,14 @@ func TestModeAOpensAdvancedWithoutExtraStep(t *testing.T) {
 
 func TestAdvancedEscDiscardsDraftChanges(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenAdvanced
+	wizard.screen = WizardScreenAdvanced
 	wizard.appCfg.ConfigDir = "/etc/mihomo"
 	wizard.advancedInputs[0].SetValue("/tmp/custom")
 
 	updated, _ := wizard.updateAdvanced(tea.KeyMsg{Type: tea.KeyEsc})
 	got := updated.(WizardModel)
-	if got.screen != ScreenPreview {
-		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	if got.screen != WizardScreenPreview {
+		t.Fatalf("screen = %v, want WizardScreenPreview", got.screen)
 	}
 	if got.appCfg.ConfigDir != "/etc/mihomo" {
 		t.Fatalf("ConfigDir = %q, want original value", got.appCfg.ConfigDir)
@@ -350,14 +348,14 @@ func TestAdvancedEscDiscardsDraftChanges(t *testing.T) {
 
 func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 	wizard.setSubscriptionSource(SubscriptionSourceFile)
 	wizard.fileInput.SetValue("/tmp/sub.txt")
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenMode {
-		t.Fatalf("screen = %v, want ScreenMode", got.screen)
+	if got.screen != WizardScreenMode {
+		t.Fatalf("screen = %v, want WizardScreenMode", got.screen)
 	}
 	if got.localImportPath != "/tmp/sub.txt" {
 		t.Fatalf("localImportPath = %q", got.localImportPath)
@@ -369,14 +367,14 @@ func TestSubscriptionEnterTracksLocalImportPath(t *testing.T) {
 
 func TestSubscriptionEnterUsesInlineContent(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 	wizard.setSubscriptionSource(SubscriptionSourceInline)
 	wizard.inlineInput.SetValue("vless://abc@example.com:443?security=tls#NodeA")
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenMode {
-		t.Fatalf("screen = %v, want ScreenMode", got.screen)
+	if got.screen != WizardScreenMode {
+		t.Fatalf("screen = %v, want WizardScreenMode", got.screen)
 	}
 	if got.inlineContent == "" {
 		t.Fatal("inlineContent should be captured")
@@ -395,12 +393,12 @@ func TestInlineInputUsesPreparedSubscriptionLimit(t *testing.T) {
 
 func TestSubscriptionEnterWithEmptyInputShowsInlineError(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenSubscription {
-		t.Fatalf("screen = %v, want ScreenSubscription", got.screen)
+	if got.screen != WizardScreenSubscription {
+		t.Fatalf("screen = %v, want WizardScreenSubscription", got.screen)
 	}
 	if got.feedback.errorText == "" {
 		t.Fatal("expected validation error on empty subscription input")
@@ -409,7 +407,7 @@ func TestSubscriptionEnterWithEmptyInputShowsInlineError(t *testing.T) {
 
 func TestSubscriptionTabCyclesSources(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 
 	updated, _ := wizard.updateSubscription(tea.KeyMsg{Type: tea.KeyTab})
 	got := updated.(WizardModel)
@@ -443,35 +441,35 @@ func TestSetupProgressDoneCarriesImportFallbackState(t *testing.T) {
 
 func TestResultEnterOpensImportFallback(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenResult
+	wizard.screen = WizardScreenResult
 	wizard.canImportFallback = true
 
 	updated, _ := wizard.updateResult(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenImportLocal {
-		t.Fatalf("screen = %v, want ScreenImportLocal", got.screen)
+	if got.screen != WizardScreenImportLocal {
+		t.Fatalf("screen = %v, want WizardScreenImportLocal", got.screen)
 	}
 }
 
 func TestResultEscReturnsToPreview(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenResult
+	wizard.screen = WizardScreenResult
 
 	updated, _ := wizard.updateResult(tea.KeyMsg{Type: tea.KeyEsc})
 	got := updated.(WizardModel)
-	if got.screen != ScreenPreview {
-		t.Fatalf("screen = %v, want ScreenPreview", got.screen)
+	if got.screen != WizardScreenPreview {
+		t.Fatalf("screen = %v, want WizardScreenPreview", got.screen)
 	}
 }
 
 func TestImportLocalEmptyPathShowsError(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenImportLocal
+	wizard.screen = WizardScreenImportLocal
 
 	updated, _ := wizard.updateImportLocal(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(WizardModel)
-	if got.screen != ScreenImportLocal {
-		t.Fatalf("screen = %v, want ScreenImportLocal", got.screen)
+	if got.screen != WizardScreenImportLocal {
+		t.Fatalf("screen = %v, want WizardScreenImportLocal", got.screen)
 	}
 	if got.feedback.errorText == "" {
 		t.Fatal("expected validation error on empty import path")
@@ -480,7 +478,7 @@ func TestImportLocalEmptyPathShowsError(t *testing.T) {
 
 func TestSubscriptionViewDoesNotPanicWithPlaceholder(t *testing.T) {
 	wizard := NewWizard(core.DefaultAppConfig())
-	wizard.screen = ScreenSubscription
+	wizard.screen = WizardScreenSubscription
 	wizard.width = 80
 	wizard.height = 24
 
@@ -691,7 +689,7 @@ func TestHandleMouseClick(t *testing.T) {
 	}, false)
 	m.width = 80
 	m.height = 24
-	m.screen = ScreenGroupSelect
+	m.screen = NodeScreenGroupSelect
 	m.loading = false
 	m.ensureViewport()
 
@@ -716,7 +714,7 @@ func TestRenderStatusBar(t *testing.T) {
 	}, false)
 	m.width = 80
 	m.height = 24
-	m.screen = ScreenGroupSelect
+	m.screen = NodeScreenGroupSelect
 	m.loading = false
 	m.groups = []GroupItem{{Name: "PROXY", Type: "select", NodeCount: 2}}
 	m.ensureViewport()
@@ -726,7 +724,7 @@ func TestRenderStatusBar(t *testing.T) {
 		t.Fatalf("status bar missing group name: %s", got)
 	}
 
-	m.screen = ScreenNodeSelect
+	m.screen = NodeScreenNodeSelect
 	m.selectedGroup = "PROXY"
 	m.nodes = []NodeItem{{Name: "Node A", Delay: 50}}
 	m.nodeIndex = 0
@@ -740,7 +738,7 @@ func TestRenderStatusBarNarrowTerminal(t *testing.T) {
 	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
 	m.width = 2
 	m.height = 10
-	m.screen = ScreenGroupSelect
+	m.screen = NodeScreenGroupSelect
 
 	got := m.renderStatusBar()
 	if got != "" {
@@ -752,7 +750,7 @@ func TestRenderStatusBarEmptyNodes(t *testing.T) {
 	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
 	m.width = 80
 	m.height = 24
-	m.screen = ScreenNodeSelect
+	m.screen = NodeScreenNodeSelect
 	m.selectedGroup = "PROXY"
 	m.nodes = []NodeItem{}
 
@@ -768,7 +766,7 @@ func TestRenderStatusBarEmptyNodes(t *testing.T) {
 func TestViewportFollowSelected(t *testing.T) {
 	v := viewportState{
 		vpReady:       true,
-		screenOffsets: make(map[Screen]int),
+		screenOffsets: make(map[int]int),
 	}
 	v.vp.Width = 40
 	v.vp.Height = 5
@@ -788,7 +786,7 @@ func TestViewportFollowSelected(t *testing.T) {
 func TestViewportScroll(t *testing.T) {
 	v := viewportState{
 		vpReady:       true,
-		screenOffsets: make(map[Screen]int),
+		screenOffsets: make(map[int]int),
 	}
 	v.vp.Width = 40
 	v.vp.Height = 5

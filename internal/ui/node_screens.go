@@ -213,15 +213,15 @@ func (m NodeManagerModel) viewNodeSelect() string {
 }
 
 func (m NodeManagerModel) renderStaticCard(header, body, footer string) string {
-	return renderStaticCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
+	return renderStaticCard(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m NodeManagerModel) renderScrollablePage(header, body, footer string) string {
-	return renderScrollablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
+	return renderScrollablePage(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m NodeManagerModel) renderSelectablePage(header, body, footer string, selectedIndex int) string {
-	return renderSelectablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
+	return renderSelectablePage(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
 }
 
 func (m NodeManagerModel) viewHelp() string {
@@ -374,7 +374,7 @@ func (m NodeManagerModel) renderStatusBar() string {
 
 	statusLine := " "
 	switch m.screen {
-	case ScreenGroupSelect:
+	case NodeScreenGroupSelect:
 		displayGroups := m.getDisplayGroups()
 		if len(displayGroups) > 0 && m.groupIndex < len(displayGroups) {
 			statusLine += fmt.Sprintf("代理组: %d 个 │ 当前: %s", len(displayGroups), displayGroups[m.groupIndex].Name)
@@ -384,7 +384,7 @@ func (m NodeManagerModel) renderStatusBar() string {
 		if m.groupSearchQuery != "" {
 			statusLine += fmt.Sprintf(" (搜索: %d/%d)", len(displayGroups), len(m.groups))
 		}
-	case ScreenNodeSelect:
+	case NodeScreenNodeSelect:
 		displayCount := len(m.getDisplayNodes())
 		totalCount := len(m.nodes)
 		if displayCount > 0 {
@@ -407,7 +407,7 @@ func (m NodeManagerModel) renderStatusBar() string {
 	}
 
 	helpLine := " "
-	if m.screen == ScreenNodeSelect {
+	if m.screen == NodeScreenNodeSelect {
 		helpLine += "↑/↓ 选择 │ Enter 切换 │ t 测速 │ s 排序 │ / 搜索 │ i 详情 │ g 跳到选中 │ c 复制 │ ? 帮助 │ Esc 返回"
 	} else {
 		helpLine += "↑/↓ 选择 │ Enter 查看 │ / 搜索 │ r 刷新 │ ? 帮助"

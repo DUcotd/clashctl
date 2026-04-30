@@ -42,7 +42,7 @@ type executionViewState struct {
 
 // WizardModel is the setup TUI state.
 type WizardModel struct {
-	screen   Screen
+	screen   WizardScreen
 	appCfg   *core.AppConfig
 	width    int
 	height   int
@@ -168,7 +168,7 @@ func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSv
 	importInput.TextStyle = InputStyle
 
 	return WizardModel{
-		screen:       ScreenSubscription,
+		screen:       WizardScreenSubscription,
 		appCfg:       appCfg,
 		title:        "🧙 clashctl 配置向导",
 		spinner:      s,
@@ -189,7 +189,7 @@ func newWizardWithServices(appCfg *core.AppConfig, setupSvc SetupService, nodeSv
 			importInput: importInput,
 		},
 		viewportState: viewportState{
-			screenOffsets: make(map[Screen]int),
+			screenOffsets: make(map[int]int),
 		},
 	}
 }
@@ -211,7 +211,7 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.usesViewport() {
 			var cmd tea.Cmd
 			m.vp, cmd = m.vp.Update(msg)
-			m.screenOffsets[m.screen] = m.vp.YOffset
+			m.screenOffsets[int(m.screen)] = m.vp.YOffset
 			return m, cmd
 		}
 		return m, nil
@@ -235,7 +235,7 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if isQuitKey(msg) {
-		if m.screen == ScreenWelcome || m.screen == ScreenSubscription {
+		if m.screen == WizardScreenWelcome || m.screen == WizardScreenSubscription {
 			m.quitConfirm = true
 			return m, nil
 		}
@@ -252,17 +252,17 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.screen {
-	case ScreenWelcome:
+	case WizardScreenWelcome:
 		return m.updateWelcome(msg)
-	case ScreenSubscription:
+	case WizardScreenSubscription:
 		return m.updateSubscription(msg)
-	case ScreenMode:
+	case WizardScreenMode:
 		return m.updateMode(msg)
-	case ScreenAdvanced:
+	case WizardScreenAdvanced:
 		return m.updateAdvanced(msg)
-	case ScreenPreview:
+	case WizardScreenPreview:
 		return m.updatePreview(msg)
-	case ScreenExecution:
+	case WizardScreenExecution:
 		if msg.String() == "esc" || msg.String() == "q" {
 			if m.canAbortExecution {
 				m.setupStream = nil
@@ -271,9 +271,9 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case ScreenResult:
+	case WizardScreenResult:
 		return m.updateResult(msg)
-	case ScreenImportLocal:
+	case WizardScreenImportLocal:
 		return m.updateImportLocal(msg)
 	default:
 		return m, nil
@@ -281,19 +281,21 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *WizardModel) ensureViewport() {
-	m.viewportState.initViewport()
-	m.viewportState.switchScreen(m.screen, m.screen, m.width, m.height, m.screen.topChrome())
+	m.viewportState.ensureSize(m.width, m.height, m.screen.topChrome())
+	if off, ok := m.screenOffsets[int(m.screen)]; ok {
+		m.vp.SetYOffset(off)
+	}
 }
 
-func (m *WizardModel) setScreen(screen Screen) {
+func (m *WizardModel) setScreen(screen WizardScreen) {
 	m.feedback.clear()
-	m.viewportState.switchScreen(m.screen, screen, m.width, m.height, screen.topChrome())
+	m.viewportState.switchScreen(int(m.screen), int(screen), m.width, m.height, screen.topChrome())
 	m.screen = screen
 }
 
 func (m WizardModel) usesViewport() bool {
 	switch m.screen {
-	case ScreenWelcome, ScreenMode, ScreenPreview, ScreenExecution, ScreenResult:
+	case WizardScreenWelcome, WizardScreenMode, WizardScreenPreview, WizardScreenExecution, WizardScreenResult:
 		return true
 	default:
 		return false
@@ -308,7 +310,7 @@ func (m WizardModel) updateWelcome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		m.focusSubscriptionInput()
-		m.setScreen(ScreenSubscription)
+		m.setScreen(WizardScreenSubscription)
 		return m, nil
 	case "?":
 		m.showHelp = true
@@ -342,7 +344,7 @@ func (m WizardModel) updateSubscription(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.feedback.setError(err)
 			return m, nil
 		}
-		m.setScreen(ScreenMode)
+		m.setScreen(WizardScreenMode)
 		return m, nil
 	default:
 		return m.updateSubscriptionInput(msg)
@@ -441,16 +443,16 @@ func (m WizardModel) updateMode(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		m.applyModeSelection()
-		m.setScreen(ScreenPreview)
+		m.setScreen(WizardScreenPreview)
 		return m, nil
 	case "a":
 		m.applyModeSelection()
 		m.resetAdvancedInputsFromConfig()
 		m.focusAdvancedInput()
-		m.setScreen(ScreenAdvanced)
+		m.setScreen(WizardScreenAdvanced)
 		return m, nil
 	case "esc":
-		m.setScreen(ScreenSubscription)
+		m.setScreen(WizardScreenSubscription)
 		return m, nil
 	}
 	return m, nil
@@ -471,12 +473,12 @@ func (m WizardModel) updateAdvanced(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.collectAdvancedValues()
 		m.blurAdvancedInputs()
-		m.setScreen(ScreenPreview)
+		m.setScreen(WizardScreenPreview)
 		return m, nil
 	case "esc":
 		m.resetAdvancedInputsFromConfig()
 		m.blurAdvancedInputs()
-		m.setScreen(ScreenPreview)
+		m.setScreen(WizardScreenPreview)
 		return m, nil
 	default:
 		if m.advancedIndex >= 0 && m.advancedIndex < len(m.advancedInputs) {
@@ -579,7 +581,7 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		m.resetAdvancedInputsFromConfig()
 		m.focusAdvancedInput()
-		m.setScreen(ScreenAdvanced)
+		m.setScreen(WizardScreenAdvanced)
 		return m, nil
 	case "enter":
 		hasSub := strings.TrimSpace(m.appCfg.SubscriptionURL) != ""
@@ -589,7 +591,7 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.feedback.setError("请先配置订阅来源")
 			return m, nil
 		}
-		m.setScreen(ScreenExecution)
+		m.setScreen(WizardScreenExecution)
 		m.resetExecutionState()
 		if hasLocal {
 			stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), m.localImportPath)
@@ -605,7 +607,7 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.setupStream = stream
 		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 	case "esc":
-		m.setScreen(ScreenMode)
+		m.setScreen(WizardScreenMode)
 		return m, nil
 	}
 	return m, nil
@@ -636,7 +638,7 @@ func (m WizardModel) handleSetupProgress(msg setupProgressMsg) (tea.Model, tea.C
 		m.canImportFallback = msg.canImport
 		m.importHint = msg.importHint
 		m.completed = true
-		m.setScreen(ScreenResult)
+		m.setScreen(WizardScreenResult)
 		return m, nil
 	}
 	if m.setupStream != nil {
@@ -662,13 +664,13 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.canImportFallback {
 			m.importInput.Focus()
-			m.setScreen(ScreenImportLocal)
+			m.setScreen(WizardScreenImportLocal)
 			return m, nil
 		}
 		m.feedback.setInfo("Mihomo 未就绪，请使用 clashctl doctor 检查环境")
 		return m, nil
 	case "esc":
-		m.setScreen(ScreenPreview)
+		m.setScreen(WizardScreenPreview)
 		return m, nil
 	}
 	return m, nil
@@ -676,7 +678,7 @@ func (m WizardModel) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *WizardModel) scrollViewport(key string) {
 	m.viewportState.scroll(key)
-	m.screenOffsets[m.screen] = m.vp.YOffset
+	m.screenOffsets[int(m.screen)] = m.vp.YOffset
 }
 
 func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -687,7 +689,7 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.feedback.setError("请输入本地订阅文件路径")
 			return m, nil
 		}
-		m.setScreen(ScreenExecution)
+		m.setScreen(WizardScreenExecution)
 		m.resetExecutionState()
 		m.importInput.Blur()
 		stream := m.setupService.StartImport(cloneAppConfig(m.appCfg), path)
@@ -695,7 +697,7 @@ func (m WizardModel) updateImportLocal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.spinner.Tick, waitForSetupProgress(stream))
 	case "esc":
 		m.importInput.Blur()
-		m.setScreen(ScreenResult)
+		m.setScreen(WizardScreenResult)
 		return m, nil
 	default:
 		m.feedback.clear()
@@ -715,7 +717,7 @@ func (m WizardModel) View() string {
 	b.WriteString(TitleStyle.Render(m.title))
 	b.WriteString("\n")
 
-	if m.screen != ScreenWelcome {
+	if m.screen != WizardScreenWelcome {
 		b.WriteString(m.screen.StepDots())
 		b.WriteString("\n")
 		b.WriteString(StepStyle.Render(m.screen.StepLabel()))
@@ -733,21 +735,21 @@ func (m WizardModel) View() string {
 	}
 
 	switch m.screen {
-	case ScreenWelcome:
+	case WizardScreenWelcome:
 		b.WriteString(m.viewWelcome())
-	case ScreenSubscription:
+	case WizardScreenSubscription:
 		b.WriteString(m.viewSubscription())
-	case ScreenMode:
+	case WizardScreenMode:
 		b.WriteString(m.viewMode())
-	case ScreenAdvanced:
+	case WizardScreenAdvanced:
 		b.WriteString(m.viewAdvanced())
-	case ScreenPreview:
+	case WizardScreenPreview:
 		b.WriteString(m.viewPreview())
-	case ScreenExecution:
+	case WizardScreenExecution:
 		b.WriteString(m.viewExecution())
-	case ScreenResult:
+	case WizardScreenResult:
 		b.WriteString(m.viewResult())
-	case ScreenImportLocal:
+	case WizardScreenImportLocal:
 		b.WriteString(m.viewImportLocal())
 	}
 

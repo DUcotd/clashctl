@@ -332,15 +332,15 @@ func (m WizardModel) viewImportLocal() string {
 }
 
 func (m WizardModel) renderStaticCard(header, body, footer string) string {
-	return renderStaticCard(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
+	return renderStaticCard(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderScrollablePage(header, body, footer string) string {
-	return renderScrollablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer)
+	return renderScrollablePage(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer)
 }
 
 func (m WizardModel) renderSelectablePage(header, body, footer string, selectedIndex int) string {
-	return renderSelectablePage(m.viewportState, m.screen, m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
+	return renderSelectablePage(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
 }
 
 func lineCount(s string) int {

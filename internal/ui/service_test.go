@@ -128,13 +128,13 @@ func TestUpdatePreviewStartsStreamingExecution(t *testing.T) {
 		remoteEvents: []setupProgressMsg{{currentStep: "检查 Mihomo 可执行文件"}, {done: true}},
 	}
 	wizard := newWizardWithServices(core.DefaultAppConfig(), setupSvc, &fakeNodeService{})
-	wizard.screen = ScreenPreview
+	wizard.screen = WizardScreenPreview
 	wizard.appCfg.SubscriptionURL = "https://example.com/sub"
 
 	updated, cmd := wizard.updatePreview(keyMsg("enter"))
 	got := updated.(WizardModel)
-	if got.screen != ScreenExecution {
-		t.Fatalf("screen = %v, want ScreenExecution", got.screen)
+	if got.screen != WizardScreenExecution {
+		t.Fatalf("screen = %v, want WizardScreenExecution", got.screen)
 	}
 	if got.setupStream == nil {
 		t.Fatal("setupStream should be initialized")
@@ -174,7 +174,7 @@ func TestNodeManagerStartsStreamingLatencyTest(t *testing.T) {
 		testEvents: []nodeTestProgressMsg{{index: 0, delay: 88, tested: 1, total: 1}, {done: true, tested: 1, total: 1}},
 	}
 	manager := newNodeManagerWithService(core.DefaultAppConfig(), nodeSvc, false)
-	manager.screen = ScreenNodeSelect
+	manager.screen = NodeScreenNodeSelect
 	manager.loading = false
 	manager.selectedGroup = "PROXY"
 	manager.nodes = []NodeItem{{Name: "Node A"}}

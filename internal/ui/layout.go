@@ -103,7 +103,7 @@ func renderCardWithStyle(header string, feedback pageFeedbackState, body, footer
 
 const minViewportContentHeight = 5
 
-func renderCardWithViewport(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
+func renderCardWithViewport(state viewportState, screenID int, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
 	if !state.vpReady {
 		return renderCard(header, feedback, body, footer)
 	}
@@ -122,10 +122,10 @@ func renderCardWithViewport(state viewportState, screen Screen, baseViewportSize
 			vp.SetYOffset(selectedIndex)
 		} else if selectedIndex >= vp.YOffset+vp.Height {
 			vp.SetYOffset(selectedIndex - vp.Height + 1)
-		} else if off, ok := state.screenOffsets[screen]; ok {
+		} else if off, ok := state.screenOffsets[screenID]; ok {
 			vp.SetYOffset(off)
 		}
-	} else if off, ok := state.screenOffsets[screen]; ok {
+	} else if off, ok := state.screenOffsets[screenID]; ok {
 		vp.SetYOffset(off)
 	}
 	scrollHint := ""
@@ -143,16 +143,16 @@ func renderCardWithViewport(state viewportState, screen Screen, baseViewportSize
 	return BoxStyle.Render(content)
 }
 
-func renderStaticCard(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
-	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, -1)
+func renderStaticCard(state viewportState, screenID int, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
+	return renderCardWithViewport(state, screenID, baseViewportSize, header, feedback, body, footer, -1)
 }
 
-func renderScrollablePage(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
-	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, -1)
+func renderScrollablePage(state viewportState, screenID int, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string) string {
+	return renderCardWithViewport(state, screenID, baseViewportSize, header, feedback, body, footer, -1)
 }
 
-func renderSelectablePage(state viewportState, screen Screen, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
-	return renderCardWithViewport(state, screen, baseViewportSize, header, feedback, body, footer, selectedIndex)
+func renderSelectablePage(state viewportState, screenID int, baseViewportSize func() (int, int), header string, feedback pageFeedbackState, body, footer string, selectedIndex int) string {
+	return renderCardWithViewport(state, screenID, baseViewportSize, header, feedback, body, footer, selectedIndex)
 }
 
 func isQuitKey(msg teaKey) bool {
