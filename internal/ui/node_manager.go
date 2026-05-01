@@ -690,11 +690,18 @@ func (m NodeManagerModel) updateNodeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 
 func waitForNodeTestProgress(stream <-chan nodeTestProgressMsg) tea.Cmd {
 	return func() tea.Msg {
-		msg, ok := <-stream
-		if !ok {
-			return nodeTestProgressMsg{done: true}
+		select {
+		case msg, ok := <-stream:
+			if !ok {
+				return nodeTestProgressMsg{done: true}
+			}
+			return msg
+		case <-time.After(60 * time.Second):
+			return nodeTestProgressMsg{
+				done: true,
+				err:  "超过 60 秒未收到测速更新，可能是后端服务卡死",
+			}
 		}
-		return msg
 	}
 }
 
@@ -728,9 +735,9 @@ func (m NodeManagerModel) switchNode(groupName, nodeName string) tea.Cmd {
 	return func() tea.Msg {
 		err := nodeService.SwitchNode(controllerAddr, groupName, nodeName)
 		if err != nil {
-			return nodeSwitchedMsg{success: false, err: err.Error()}
+			return nodeSwitchedMsg{success: false, err: err.Error(), nodeName: nodeName}
 		}
-		return nodeSwitchedMsg{success: true}
+		return nodeSwitchedMsg{success: true, nodeName: nodeName}
 	}
 }
 
@@ -743,6 +750,10 @@ func (m NodeManagerModel) handleGroupsLoaded(msg groupsLoadedMsg) (tea.Model, te
 	m.feedback.clear()
 	m.groups = msg.groups
 	m.groupIndex = 0
+	m.groupSearchQuery = ""
+	m.groupSearchInput.SetValue("")
+	m.groupFiltered = nil
+	m.setScreen(NodeScreenGroupSelect)
 	return m, nil
 }
 
@@ -755,6 +766,9 @@ func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.
 	m.feedback.clear()
 	m.nodes = msg.nodes
 	m.nodeIndex = 0
+	m.searchQuery = ""
+	m.searchInput.SetValue("")
+	m.filteredNodes = nil
 	for i, node := range m.nodes {
 		if node.Selected {
 			m.nodeIndex = i
@@ -768,10 +782,13 @@ func (m NodeManagerModel) handleNodesLoaded(msg nodesLoadedMsg) (tea.Model, tea.
 func (m NodeManagerModel) handleNodeSwitched(msg nodeSwitchedMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
 	if msg.success {
-		switchedName := ""
-		displayNodes := m.getDisplayNodes()
-		if m.nodeIndex < len(displayNodes) {
-			switchedName = displayNodes[m.nodeIndex].Name
+		switchedName := msg.nodeName
+		if switchedName == "" {
+			// Fallback: derive from current index (legacy compatibility)
+			displayNodes := m.getDisplayNodes()
+			if m.nodeIndex < len(displayNodes) {
+				switchedName = displayNodes[m.nodeIndex].Name
+			}
 		}
 		for i := range m.nodes {
 			m.nodes[i].Selected = (m.nodes[i].Name == switchedName)

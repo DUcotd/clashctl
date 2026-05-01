@@ -24,8 +24,9 @@ type nodesLoadedMsg struct {
 
 // nodeSwitchedMsg is sent when a node switch finishes.
 type nodeSwitchedMsg struct {
-	success bool
-	err     string
+	success  bool
+	err      string
+	nodeName string // the node that was switched to
 }
 
 // nodeTestProgressMsg carries streaming node latency results.

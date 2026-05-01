@@ -909,3 +909,146 @@ func TestPageFeedbackSetInfo(t *testing.T) {
 		t.Errorf("messageTone = %v, want %v", f.messageTone, feedbackInfo)
 	}
 }
+
+// --- Bug fix tests ---
+
+func TestNodeManagerSwitchUsesNodeNameFromMsg(t *testing.T) {
+	m := NewNodeManager(core.DefaultAppConfig())
+	m.screen = NodeScreenNodeSelect
+	m.nodes = []NodeItem{{Name: "Node A"}, {Name: "Node B", Selected: true}}
+	m.nodeIndex = 0 // point to Node A
+
+	// Switch to Node B — msg.nodeName should be used, not m.nodeIndex
+	updated, _ := m.handleNodeSwitched(nodeSwitchedMsg{success: true, nodeName: "Node B"})
+	got := updated.(NodeManagerModel)
+	if !got.nodes[1].Selected {
+		t.Fatal("Node B should be selected")
+	}
+	if got.nodes[0].Selected {
+		t.Fatal("Node A should not be selected")
+	}
+	if !strings.Contains(got.feedback.messageText, "Node B") {
+		t.Fatalf("feedback should mention Node B, got %q", got.feedback.messageText)
+	}
+}
+
+func TestNodeManagerSwitchFallsBackToIndexWhenNodeNameEmpty(t *testing.T) {
+	m := NewNodeManager(core.DefaultAppConfig())
+	m.screen = NodeScreenNodeSelect
+	m.nodes = []NodeItem{{Name: "Node A"}, {Name: "Node B"}}
+	m.nodeIndex = 1
+
+	// Empty nodeName should fall back to m.nodeIndex
+	updated, _ := m.handleNodeSwitched(nodeSwitchedMsg{success: true, nodeName: ""})
+	got := updated.(NodeManagerModel)
+	if !got.nodes[1].Selected {
+		t.Fatal("Node B should be selected via fallback")
+	}
+}
+
+func TestHandleGroupsLoadedClearsSearchState(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.groupSearchQuery = "test"
+	m.groupSearchInput.SetValue("test")
+	m.groupFiltered = []GroupItem{{Name: "Filtered"}}
+
+	updated, _ := m.handleGroupsLoaded(groupsLoadedMsg{groups: []GroupItem{{Name: "PROXY"}}})
+	got := updated.(NodeManagerModel)
+	if got.groupSearchQuery != "" {
+		t.Fatalf("groupSearchQuery should be empty, got %q", got.groupSearchQuery)
+	}
+	if got.groupFiltered != nil {
+		t.Fatal("groupFiltered should be nil")
+	}
+	if got.groupSearchInput.Value() != "" {
+		t.Fatalf("groupSearchInput should be empty, got %q", got.groupSearchInput.Value())
+	}
+}
+
+func TestHandleGroupsLoadedReturnsToGroupSelect(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.screen = NodeScreenNodeSelect // simulate being on node select
+
+	updated, _ := m.handleGroupsLoaded(groupsLoadedMsg{groups: []GroupItem{{Name: "PROXY"}}})
+	got := updated.(NodeManagerModel)
+	if got.screen != NodeScreenGroupSelect {
+		t.Fatalf("screen should be GroupSelect after groups loaded, got %v", got.screen)
+	}
+}
+
+func TestHandleNodesLoadedClearsSearchState(t *testing.T) {
+	m := newNodeManagerWithService(core.DefaultAppConfig(), &fakeNodeService{}, false)
+	m.searchQuery = "test"
+	m.searchInput.SetValue("test")
+	m.filteredNodes = []NodeItem{{Name: "Filtered"}}
+
+	updated, _ := m.handleNodesLoaded(nodesLoadedMsg{nodes: []NodeItem{{Name: "Node A", Selected: true}}})
+	got := updated.(NodeManagerModel)
+	if got.searchQuery != "" {
+		t.Fatalf("searchQuery should be empty, got %q", got.searchQuery)
+	}
+	if got.filteredNodes != nil {
+		t.Fatal("filteredNodes should be nil")
+	}
+	if got.searchInput.Value() != "" {
+		t.Fatalf("searchInput should be empty, got %q", got.searchInput.Value())
+	}
+}
+
+func TestWizardQuitConfirmOnModeScreen(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = WizardScreenMode
+
+	updated, cmd := wizard.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(WizardModel)
+	if !got.quitConfirm {
+		t.Fatal("quitConfirm should be true on Mode screen")
+	}
+	if cmd != nil {
+		t.Fatal("no command should be returned on quit confirm")
+	}
+}
+
+func TestWizardQuitConfirmOnAdvancedScreen(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = WizardScreenAdvanced
+
+	updated, _ := wizard.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(WizardModel)
+	if !got.quitConfirm {
+		t.Fatal("quitConfirm should be true on Advanced screen")
+	}
+}
+
+func TestWizardQuitConfirmOnPreviewScreen(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = WizardScreenPreview
+
+	updated, _ := wizard.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(WizardModel)
+	if !got.quitConfirm {
+		t.Fatal("quitConfirm should be true on Preview screen")
+	}
+}
+
+func TestWizardImmediateQuitOnResultScreen(t *testing.T) {
+	wizard := NewWizard(core.DefaultAppConfig())
+	wizard.screen = WizardScreenResult
+
+	updated, cmd := wizard.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	got := updated.(WizardModel)
+	if !got.quitting {
+		t.Fatal("quitting should be true on Result screen (immediate quit)")
+	}
+	if cmd == nil {
+		t.Fatal("quit command should be returned on Result screen")
+	}
+}
+
+func TestProtocolBadgeRuneTruncation(t *testing.T) {
+	// Test with a protocol name that has multi-byte UTF-8 characters
+	badge := protocolBadge("这是一个很长的协议名")
+	if !strings.Contains(badge, "这是一个很长的协") {
+		t.Fatalf("protocol badge should truncate to 10 runes, got: %s", badge)
+	}
+}

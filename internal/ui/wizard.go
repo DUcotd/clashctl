@@ -4,6 +4,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"clashctl/internal/system"
 
@@ -235,12 +236,18 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if isQuitKey(msg) {
-		if m.screen == WizardScreenWelcome || m.screen == WizardScreenSubscription {
+		switch m.screen {
+		case WizardScreenWelcome, WizardScreenSubscription,
+			WizardScreenMode, WizardScreenAdvanced, WizardScreenPreview:
 			m.quitConfirm = true
 			return m, nil
+		case WizardScreenExecution:
+			// Fall through to Execution's own abort logic below
+		default:
+			// Result/ImportLocal allow immediate quit
+			m.quitting = true
+			return m, tea.Quit
 		}
-		m.quitting = true
-		return m, tea.Quit
 	}
 
 	if m.showHelp {
@@ -263,7 +270,7 @@ func (m WizardModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case WizardScreenPreview:
 		return m.updatePreview(msg)
 	case WizardScreenExecution:
-		if msg.String() == "esc" || msg.String() == "q" {
+		if msg.String() == "esc" || msg.String() == "q" || msg.String() == "ctrl+c" {
 			if m.canAbortExecution {
 				m.setupStream = nil
 				m.quitting = true
@@ -615,11 +622,22 @@ func (m WizardModel) updatePreview(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func waitForSetupProgress(stream <-chan setupProgressMsg) tea.Cmd {
 	return func() tea.Msg {
-		msg, ok := <-stream
-		if !ok {
-			return setupProgressMsg{done: true}
+		select {
+		case msg, ok := <-stream:
+			if !ok {
+				return setupProgressMsg{done: true}
+			}
+			return msg
+		case <-time.After(60 * time.Second):
+			return setupProgressMsg{
+				done: true,
+				step: &ExecStep{
+					Label:   "等待进度超时",
+					Success: false,
+					Detail:  "超过 60 秒未收到进度更新，可能是后端服务卡死",
+				},
+			}
 		}
-		return msg
 	}
 }
 

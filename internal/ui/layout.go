@@ -57,17 +57,25 @@ func (f *pageFeedbackState) setSuccess(msg string) {
 	f.messageTone = feedbackSuccess
 }
 
-func feedbackBlock(feedback pageFeedbackState) string {
+func feedbackBlock(feedback pageFeedbackState, width int) string {
 	lines := make([]string, 0, 2)
 	if feedback.errorText != "" {
-		lines = append(lines, ErrorStyle.Render("错误: "+feedback.errorText))
+		text := "错误: " + feedback.errorText
+		if width > 0 {
+			text = strings.Join(wrapText(text, width), "\n")
+		}
+		lines = append(lines, ErrorStyle.Render(text))
 	}
 	if feedback.messageText != "" {
+		text := feedback.messageText
+		if width > 0 {
+			text = strings.Join(wrapText(text, width), "\n")
+		}
 		switch feedback.messageTone {
 		case feedbackSuccess:
-			lines = append(lines, SuccessStyle.Render(feedback.messageText))
+			lines = append(lines, SuccessStyle.Render(text))
 		case feedbackInfo:
-			lines = append(lines, InfoStyle.Render(feedback.messageText))
+			lines = append(lines, InfoStyle.Render(text))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -75,7 +83,7 @@ func feedbackBlock(feedback pageFeedbackState) string {
 
 func renderCard(header string, feedback pageFeedbackState, body, footer string) string {
 	content := HeaderStyle.Render(header)
-	if block := feedbackBlock(feedback); block != "" {
+	if block := feedbackBlock(feedback, 0); block != "" {
 		content += "\n\n" + block
 	}
 	if body != "" {
@@ -89,7 +97,7 @@ func renderCard(header string, feedback pageFeedbackState, body, footer string) 
 
 func renderCardWithStyle(header string, feedback pageFeedbackState, body, footer string, boxStyle lipgloss.Style) string {
 	content := HeaderStyle.Render(header)
-	if block := feedbackBlock(feedback); block != "" {
+	if block := feedbackBlock(feedback, 0); block != "" {
 		content += "\n\n" + block
 	}
 	if body != "" {
@@ -111,7 +119,7 @@ func renderCardWithViewport(state viewportState, screenID int, baseViewportSize 
 	vp := state.vp
 	vp.Width = innerWidth
 	headerBlock := HeaderStyle.Render(header)
-	feedbackBlock := feedbackBlock(feedback)
+	feedbackBlock := feedbackBlock(feedback, innerWidth)
 	footerBlock := HelpStyle.Render(footer)
 	chromeHeight := lineCount(headerBlock) + lineCount(feedbackBlock) + lineCount(footerBlock) + 2
 	contentHeight := max(minViewportContentHeight, innerHeight-chromeHeight)
@@ -184,7 +192,7 @@ func handleQuitConfirm(key string, quitConfirm *bool) (quit bool, cancel bool) {
 
 func cardChromeHeight(header string, feedback pageFeedbackState, footer string, extraLines int) int {
 	h := lineCount(HeaderStyle.Render(header))
-	h += lineCount(feedbackBlock(feedback))
+	h += lineCount(feedbackBlock(feedback, 0))
 	h += lineCount(HelpStyle.Render(footer))
 	h += 2
 	h += extraLines

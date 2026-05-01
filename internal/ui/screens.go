@@ -448,8 +448,9 @@ func protocolBadge(p string) string {
 	case "shadowsocks", "ss":
 		return ProtocolSSStyle.Render("SS")
 	default:
-		if len(clean) > 10 {
-			clean = clean[:10]
+		runes := []rune(clean)
+		if len(runes) > 10 {
+			clean = string(runes[:10])
 		}
 		return ProtocolUnknownStyle.Render(clean)
 	}
