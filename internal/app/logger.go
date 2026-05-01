@@ -195,4 +195,3 @@ func readRecentLogTail(path string, maxBytes int64) ([]byte, error) {
 	}
 	return data, nil
 }
-

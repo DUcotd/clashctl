@@ -83,7 +83,7 @@ func TestBuildStatusReportIncludesSortedGroupsAndWarnings(t *testing.T) {
 		Cfg: cfg, ProxyEnv: []string{"HTTP_PROXY=http://127.0.0.1:7890"},
 		Binary: "/usr/local/bin/mihomo", BinaryVersion: "1.19.10",
 		ControllerVersion: "1.19.10",
-		Groups: groups, Inventory: inventory,
+		Groups:            groups, Inventory: inventory,
 	})
 
 	if !report.Service.Active || report.Service.Mode != "process" {
