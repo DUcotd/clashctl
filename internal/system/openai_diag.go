@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"clashctl/internal/core"
 )
 
 // HTTPProbeResult captures the HTTP-level outcome of a reachability probe.
@@ -61,7 +59,7 @@ func DetectEgressInfo(client HTTPDoer) (*EgressInfo, error) {
 			return nil, fmt.Errorf("无法构建请求: %w", err)
 		}
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+		req.Header.Set("User-Agent", "clashctl/"+UserAgentVersion)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -103,7 +101,7 @@ func ProbeEndpoint(client HTTPDoer, rawURL string) (*HTTPProbeResult, error) {
 		return nil, fmt.Errorf("无法构建请求: %w", err)
 	}
 	req.Header.Set("Accept", "application/json, text/plain;q=0.9, */*;q=0.8")
-	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+	req.Header.Set("User-Agent", "clashctl/"+UserAgentVersion)
 
 	resp, err := client.Do(req)
 	if err != nil {

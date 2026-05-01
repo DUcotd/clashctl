@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
-	"syscall"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 	nodeops "clashctl/internal/nodes"
 	"clashctl/internal/ui"
@@ -22,27 +20,27 @@ var nodesCmd = &cobra.Command{
 
 直接执行 'clashctl nodes' 会进入交互式节点管理界面；
 需要脚本化操作时，可继续使用 list / use / groups / test 子命令。`,
-	RunE: runTUINodes,
+	RunE: withAppConfig(runTUINodes),
 }
 
 var nodesListCmd = &cobra.Command{
 	Use:   "list [代理组名]",
 	Short: "列出代理组中的节点",
 	Args:  cobra.MaximumNArgs(1),
-	RunE:  runNodesList,
+	RunE:  withAppConfig(runNodesList),
 }
 
 var nodesUseCmd = &cobra.Command{
 	Use:   "use <节点名称> [代理组名]",
 	Short: "切换到指定节点",
 	Args:  cobra.RangeArgs(1, 2),
-	RunE:  runNodesUse,
+	RunE:  withAppConfig(runNodesUse),
 }
 
 var nodesGroupsCmd = &cobra.Command{
 	Use:   "groups",
 	Short: "列出所有代理组",
-	RunE:  runNodesGroups,
+	RunE:  withAppConfig(runNodesGroups),
 }
 
 var (
@@ -94,7 +92,7 @@ var nodesTestCmd = &cobra.Command{
 	Use:   "test [代理组名]",
 	Short: "测试代理组节点延迟",
 	Args:  cobra.MaximumNArgs(1),
-	RunE:  runNodesTest,
+	RunE:  withAppConfig(runNodesTest),
 }
 
 func init() {
@@ -111,41 +109,20 @@ func init() {
 	rootCmd.AddCommand(nodesCmd)
 }
 
-func runTUINodes(cmd *cobra.Command, args []string) error {
-	appCfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runTUINodes(cmd *cobra.Command, args []string, appCfg *core.AppConfig) error {
 	service := nodeops.NewServiceWithSecret(appCfg.ControllerSecret)
 	if err := service.CheckConnection(appCfg.ControllerAddr); err != nil {
 		return fmt.Errorf("Controller API 不可达: %w\n请先运行 'clashctl service start' 或完成 'clashctl init'", err)
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-
 	manager := ui.NewNodeManager(appCfg)
-	p := tea.NewProgram(manager, tea.WithAltScreen(), tea.WithMouseCellMotion())
-
-	go func() {
-		<-sigCh
-		p.Quit()
-	}()
-
-	if _, err := p.Run(); err != nil {
+	if _, err := runTUI(manager); err != nil {
 		return fmt.Errorf("节点管理界面运行出错: %w", err)
 	}
 	return nil
 }
 
-func runNodesList(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runNodesList(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	groupName := "PROXY"
 	if len(args) > 0 {
 		groupName = args[0]
@@ -179,12 +156,7 @@ func runNodesList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNodesUse(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runNodesUse(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	nodeName := args[0]
 	groupName := "PROXY"
 	if len(args) > 1 {
@@ -203,12 +175,7 @@ func runNodesUse(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNodesGroups(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runNodesGroups(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	service := nodeops.NewServiceWithSecret(cfg.ControllerSecret)
 	groups, err := service.ListGroups(cfg.ControllerAddr)
 	if err != nil {
@@ -245,11 +212,7 @@ func runNodesGroups(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runNodesTest(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
+func runNodesTest(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	if nodesTestConcurrent <= 0 {
 		return fmt.Errorf("--concurrency 必须大于 0")
 	}

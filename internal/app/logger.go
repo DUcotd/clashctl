@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"clashctl/internal/system"
 )
 
 // LogLevel represents the severity of a log entry.
@@ -149,7 +151,7 @@ func GetRecentLogs(count int) ([]string, error) {
 		return nil, err
 	}
 
-	lines := splitLines(string(data))
+	lines := system.SplitLines(string(data))
 	if len(lines) <= count {
 		return lines, nil
 	}
@@ -194,23 +196,3 @@ func readRecentLogTail(path string, maxBytes int64) ([]byte, error) {
 	return data, nil
 }
 
-func splitLines(text string) []string {
-	var lines []string
-	start := 0
-	for i, c := range text {
-		if c == '\n' {
-			line := text[start:i]
-			if line != "" {
-				lines = append(lines, line)
-			}
-			start = i + 1
-		}
-	}
-	if start < len(text) {
-		line := text[start:]
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	return lines
-}

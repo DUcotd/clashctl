@@ -27,7 +27,7 @@ func TestRunConfigShowRejectsOversizedConfig(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err := runConfigShow(nil, nil)
+	err := runConfigShow(nil, nil, cfg)
 	if err == nil {
 		t.Fatal("runConfigShow() should reject oversized config files")
 	}

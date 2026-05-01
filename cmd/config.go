@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -40,12 +39,16 @@ type configShowReport struct {
 	Error      string `json:"error,omitempty"`
 }
 
+func (r *configShowReport) SetError(msg string) { r.Error = msg }
+
 type configPathReport struct {
 	ConfigDir    string `json:"config_dir"`
 	ConfigPath   string `json:"config_path"`
 	ProviderPath string `json:"provider_path"`
 	Error        string `json:"error,omitempty"`
 }
+
+func (r *configPathReport) SetError(msg string) { r.Error = msg }
 
 type exportRunReport struct {
 	SubscriptionURL string   `json:"subscription_url"`
@@ -56,6 +59,8 @@ type exportRunReport struct {
 	Errors          []string `json:"errors,omitempty"`
 	Error           string   `json:"error,omitempty"`
 }
+
+func (r *exportRunReport) SetError(msg string) { r.Error = msg }
 
 type importRunReport struct {
 	Source          string                  `json:"source"`
@@ -76,6 +81,8 @@ type importRunReport struct {
 	Runtime         *runtimeStartJSONReport `json:"runtime,omitempty"`
 	Error           string                  `json:"error,omitempty"`
 }
+
+func (r *importRunReport) SetError(msg string) { r.Error = msg }
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -98,13 +105,13 @@ var configExportCmd = &cobra.Command{
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "显示当前 Mihomo 配置",
-	RunE:  runConfigShow,
+	RunE:  withAppConfig(runConfigShow),
 }
 
 var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "显示配置文件路径",
-	RunE:  runConfigPath,
+	RunE:  withAppConfig(runConfigPath),
 }
 
 func init() {
@@ -161,32 +168,32 @@ func runExport(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(os.Stderr, "❌ %s\n", e)
 			}
 		}
-		return finishExportReport(report, fmt.Errorf("配置校验失败"))
+		return finishReport(report, fmt.Errorf("配置校验失败"), exportJSON)
 	}
 
 	if err := system.ValidateOutputPath(exportOutput); err != nil {
-		return finishExportReport(report, fmt.Errorf("输出路径不安全: %w", err))
+		return finishReport(report, fmt.Errorf("输出路径不安全: %w", err), exportJSON)
 	}
 
 	mihomoCfg := core.BuildMihomoConfig(cfg)
 	yamlData, err := core.RenderYAML(mihomoCfg)
 	if err != nil {
-		return finishExportReport(report, fmt.Errorf("YAML 渲染失败: %w", err))
+		return finishReport(report, fmt.Errorf("YAML 渲染失败: %w", err), exportJSON)
 	}
 
 	if err := configfile.WriteConfig(exportOutput, yamlData); err != nil {
-		return finishExportReport(report, fmt.Errorf("写入文件失败: %w", err))
+		return finishReport(report, fmt.Errorf("写入文件失败: %w", err), exportJSON)
 	}
 	report.Written = true
 	if exportJSON {
-		return finishExportReport(report, nil)
+		return finishReport(report, nil, exportJSON)
 	}
 
 	fmt.Printf("✅ 配置已导出到: %s\n", exportOutput)
 	fmt.Printf("   模式: %s\n", cfg.Mode)
 	fmt.Printf("   订阅: %s\n", cfg.SubscriptionURL)
 
-	return finishExportReport(report, nil)
+	return finishReport(report, nil, exportJSON)
 }
 
 func buildExportReport(cfg *core.AppConfig, outputPath string) *exportRunReport {
@@ -201,18 +208,6 @@ func buildExportReport(cfg *core.AppConfig, outputPath string) *exportRunReport 
 	return report
 }
 
-func finishExportReport(report *exportRunReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if exportJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
-}
-
 func runImport(cmd *cobra.Command, args []string) error {
 	report := &importRunReport{
 		Apply:      importApply || importStart,
@@ -225,13 +220,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 	data, sourceDesc, err := readImportSource(importFile)
 	if err != nil {
-		return finishImportReport(report, fmt.Errorf("读取订阅文件失败: %w", err))
+		return finishReport(report, fmt.Errorf("读取订阅文件失败: %w", err), importJSON)
 	}
 	report.Source = sourceDesc
 
 	if !importApply && !importStart {
 		if err := system.ValidateOutputPath(importOutput); err != nil {
-			return finishImportReport(report, fmt.Errorf("输出路径不安全: %w", err))
+			return finishReport(report, fmt.Errorf("输出路径不安全: %w", err), importJSON)
 		}
 	}
 
@@ -239,7 +234,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	if importApply || importStart {
 		loaded, err := loadAppConfig()
 		if err != nil {
-			return finishImportReport(report, err)
+			return finishReport(report, err, importJSON)
 		}
 		cfg = loaded
 	}
@@ -267,7 +262,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 	resolver := subscription.NewResolver()
 	plan, err := resolver.ResolveContent(cfg, data)
 	if err != nil {
-		return finishImportReport(report, fmt.Errorf("解析订阅文件失败: %w", err))
+		return finishReport(report, fmt.Errorf("解析订阅文件失败: %w", err), importJSON)
 	}
 	populateImportReport(report, cfg, plan)
 
@@ -287,15 +282,15 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 		if err != nil {
 			if wrapped := setupflow.WrapStageError(err, setupflow.StageCreateConfigDir, "创建配置目录失败: %w"); wrapped != err {
-				return finishImportReport(report, wrapped)
+				return finishReport(report, wrapped, importJSON)
 			}
 			if wrapped := setupflow.WrapStageError(err, setupflow.StageWriteConfig, "写入配置文件失败: %w"); wrapped != err {
-				return finishImportReport(report, wrapped)
+				return finishReport(report, wrapped, importJSON)
 			}
 			if wrapped := setupflow.WrapStageError(err, setupflow.StageSaveAppConfig, "保存 clashctl 配置失败: %w"); wrapped != err {
-				return finishImportReport(report, wrapped)
+				return finishReport(report, wrapped, importJSON)
 			}
-			return finishImportReport(report, err)
+			return finishReport(report, err, importJSON)
 		}
 		if !importJSON {
 			fmt.Printf("✅ 静态配置已写入: %s\n", outputPath)
@@ -307,10 +302,10 @@ func runImport(cmd *cobra.Command, args []string) error {
 		report.OutputPath = outputPath
 		yamlData, err := plan.RenderYAML()
 		if err != nil {
-			return finishImportReport(report, fmt.Errorf("YAML 渲染失败: %w", err))
+			return finishReport(report, fmt.Errorf("YAML 渲染失败: %w", err), importJSON)
 		}
 		if err := configfile.WriteConfig(outputPath, yamlData); err != nil {
-			return finishImportReport(report, fmt.Errorf("写入文件失败: %w", err))
+			return finishReport(report, fmt.Errorf("写入文件失败: %w", err), importJSON)
 		}
 		if !importJSON {
 			fmt.Printf("✅ 配置已导出到: %s\n", outputPath)
@@ -331,21 +326,17 @@ func runImport(cmd *cobra.Command, args []string) error {
 		if !importJSON {
 			fmt.Println("🚀 正在启动 Mihomo...")
 		}
-		result, err := runtime.Start(cfg, mihomo.StartOptions{
-			VerifyInventory: true,
-			WaitRetries:     15,
-			WaitInterval:    2 * time.Second,
-		})
+		result, err := runtime.Start(cfg, defaultStartOptions())
 		report.Runtime = buildRuntimeStartJSONReport(result)
 		if !importJSON {
 			printRuntimeStartResult(os.Stdout, result)
 		}
 		if err != nil {
-			return finishImportReport(report, err)
+			return finishReport(report, err, importJSON)
 		}
 	}
 
-	return finishImportReport(report, nil)
+	return finishReport(report, nil, importJSON)
 }
 
 func populateImportReport(report *importRunReport, cfg *core.AppConfig, plan *subscription.ResolvedConfigPlan) {
@@ -371,18 +362,6 @@ func populateImportReport(report *importRunReport, cfg *core.AppConfig, plan *su
 	if len(plan.RemovedFields) > 0 {
 		report.Warnings = append(report.Warnings, "已移除字段: "+strings.Join(plan.RemovedFields, ", "))
 	}
-}
-
-func finishImportReport(report *importRunReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if importJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
 }
 
 func readImportSource(path string) ([]byte, string, error) {
@@ -415,40 +394,31 @@ func readImportSourceWithLimit(r io.Reader, source string) ([]byte, error) {
 	return data, nil
 }
 
-func runConfigShow(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runConfigShow(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	configPath := mihomoConfigPath(cfg)
 	report := &configShowReport{ConfigPath: configPath}
 	data, err := configfile.ReadConfigWithLimit(configPath)
 	if err != nil {
-		return finishConfigShowReport(report, fmt.Errorf("无法读取配置文件 %s: %w", configPath, err))
+		return finishReport(report, fmt.Errorf("无法读取配置文件 %s: %w", configPath, err), configShowJSON)
 	}
 	report.Content = string(data)
 	if configShowJSON {
-		return finishConfigShowReport(report, nil)
+		return finishReport(report, nil, configShowJSON)
 	}
 	fmt.Println(string(data))
-	return finishConfigShowReport(report, nil)
+	return finishReport(report, nil, configShowJSON)
 }
 
-func runConfigPath(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
+func runConfigPath(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	report := buildConfigPathReport(cfg)
 	if configPathJSON {
-		return finishConfigPathReport(report, nil)
+		return finishReport(report, nil, configPathJSON)
 	}
 
 	fmt.Printf("配置目录: %s\n", cfg.ConfigDir)
 	fmt.Printf("配置文件: %s\n", mihomoConfigPath(cfg))
 	fmt.Printf("Provider: %s\n", mihomoProviderPath(cfg))
-	return finishConfigPathReport(report, nil)
+	return finishReport(report, nil, configPathJSON)
 }
 
 func buildConfigPathReport(cfg *core.AppConfig) *configPathReport {
@@ -457,28 +427,4 @@ func buildConfigPathReport(cfg *core.AppConfig) *configPathReport {
 		ConfigPath:   mihomoConfigPath(cfg),
 		ProviderPath: mihomoProviderPath(cfg),
 	}
-}
-
-func finishConfigShowReport(report *configShowReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if configShowJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
-}
-
-func finishConfigPathReport(report *configPathReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if configPathJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
 }

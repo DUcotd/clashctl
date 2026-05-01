@@ -5,6 +5,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"clashctl/internal/core"
+	"clashctl/internal/system"
 )
 
 var rootCmd = &cobra.Command{
@@ -20,10 +23,13 @@ var rootCmd = &cobra.Command{
   - clashctl config ...      导入导出与查看配置
   - clashctl doctor          环境自检
   - clashctl backup ...      备份与恢复`,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 // Execute runs the root command.
 func Execute() {
+	system.UserAgentVersion = core.AppVersion
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

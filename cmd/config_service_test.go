@@ -29,9 +29,9 @@ func TestFinishInstallReportStoresError(t *testing.T) {
 	t.Cleanup(func() { installJSON = prev })
 	installJSON = false
 	report := &installRunReport{}
-	err := finishInstallReport(report, errors.New("need sudo"))
+	err := finishReport(report, errors.New("need sudo"), false)
 	if err == nil || err.Error() != "need sudo" {
-		t.Fatalf("finishInstallReport() error = %v", err)
+		t.Fatalf("finishReport() error = %v", err)
 	}
 	if report.Error != "need sudo" {
 		t.Fatalf("report.Error = %q", report.Error)

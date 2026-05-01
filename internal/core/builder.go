@@ -59,28 +59,7 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 				Interval: 300,
 			},
 		},
-		DNS: &DNSConfig{
-			Enable:       true,
-			IPv6:         false,
-			EnhancedMode: "redir-host",
-			NameServer: []string{
-				"223.5.5.5",
-				"119.29.29.29",
-			},
-			Fallback: []string{
-				"https://1.1.1.1/dns-query",
-				"https://dns.google/dns-query",
-				"tls://8.8.4.4:853",
-			},
-			DefaultNameserver: []string{
-				"223.5.5.5",
-				"119.29.29.29",
-			},
-			DirectNameserver: []string{
-				"223.5.5.5",
-				"119.29.29.29",
-			},
-		},
+		DNS: defaultDNSConfig(),
 	}
 
 	// Build rules list
@@ -127,17 +106,7 @@ func BuildMihomoConfig(cfg *AppConfig) *MihomoConfig {
 
 	// Add TUN config only in TUN mode
 	if cfg.Mode == "tun" {
-		m.TUN = &TUNConfig{
-			Enable:              true,
-			Stack:               "mixed",
-			AutoRoute:           true,
-			AutoRedirect:        true,
-			AutoDetectInterface: true,
-			DNSHijack: []string{
-				"any:53",
-				"tcp://any:53",
-			},
-		}
+		m.TUN = DefaultTUNConfig()
 	}
 
 	return m

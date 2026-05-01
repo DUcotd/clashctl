@@ -73,11 +73,7 @@ type statusReport struct {
 	Warnings       []string                 `json:"warnings,omitempty"`
 }
 
-func runStatus(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
+func runStatus(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	proxyEnv := system.ProxyEnvForDisplay()
 
 	// Check systemd service
@@ -111,7 +107,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		inventory, inventoryErr = client.InspectProxyInventory("PROXY")
 	}
 
-	report := buildStatusReport(cfg, proxyEnv, serviceActive, serviceErr, binary, binaryVersion, err, controllerVersion, controllerErr, groups, groupsErr, inventory, inventoryErr)
+	report := buildStatusReport(&statusReportInput{
+		Cfg: cfg, ProxyEnv: proxyEnv,
+		ServiceActive: serviceActive, ServiceErr: serviceErr,
+		Binary: binary, BinaryVersion: binaryVersion, BinaryErr: err,
+		ControllerVersion: controllerVersion, ControllerErr: controllerErr,
+		Groups: groups, GroupsErr: groupsErr,
+		Inventory: inventory, InventoryErr: inventoryErr,
+	})
 	if statusJSON {
 		return writeJSON(report)
 	}
@@ -121,57 +124,73 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	return printStatusReport(os.Stdout, report)
 }
 
-func buildStatusReport(cfg *core.AppConfig, proxyEnv []string, serviceActive bool, serviceErr error, binary string, binaryVersion string, binaryErr error, controllerVersion string, controllerErr error, groups map[string]mihomo.ProxyGroup, groupsErr error, inventory *mihomo.ProxyInventory, inventoryErr error) *statusReport {
+type statusReportInput struct {
+	Cfg               *core.AppConfig
+	ProxyEnv          []string
+	ServiceActive     bool
+	ServiceErr        error
+	Binary            string
+	BinaryVersion     string
+	BinaryErr         error
+	ControllerVersion string
+	ControllerErr     error
+	Groups            map[string]mihomo.ProxyGroup
+	GroupsErr         error
+	Inventory         *mihomo.ProxyInventory
+	InventoryErr      error
+}
+
+func buildStatusReport(in *statusReportInput) *statusReport {
 	report := &statusReport{
 		Service: statusServiceReport{},
 		Binary: statusBinaryReport{
-			Found: binaryErr == nil,
-			Path:  binary,
+			Found: in.BinaryErr == nil,
+			Path:  in.Binary,
 		},
 		Config: statusConfigReport{
-			Dir:            cfg.ConfigDir,
-			Mode:           cfg.Mode,
-			ControllerAddr: cfg.ControllerAddr,
+			Dir:            in.Cfg.ConfigDir,
+			Mode:           in.Cfg.Mode,
+			ControllerAddr: in.Cfg.ControllerAddr,
 		},
 		ProxyEnv: statusProxyEnvReport{
-			Configured: len(proxyEnv) > 0,
-			Entries:    append([]string(nil), proxyEnv...),
-			Messages:   proxyStatusLines(cfg, proxyEnv),
+			Configured: len(in.ProxyEnv) > 0,
+			Entries:    append([]string(nil), in.ProxyEnv...),
+			Messages:   proxyStatusLines(in.Cfg, in.ProxyEnv),
 		},
 		Controller: statusControllerReport{
-			Reachable: controllerErr == nil,
-			Version:   controllerVersion,
+			Reachable: in.ControllerErr == nil,
+			Version:   in.ControllerVersion,
 		},
 	}
-	if cfg.Mode == "mixed" {
-		report.Config.MixedPort = cfg.MixedPort
+	if in.Cfg.Mode == "mixed" {
+		report.Config.MixedPort = in.Cfg.MixedPort
 	}
-	if serviceErr != nil {
-		report.Service.Error = serviceErr.Error()
+	if in.ServiceErr != nil {
+		report.Service.Error = in.ServiceErr.Error()
 	}
-	if serviceActive {
+	if in.ServiceActive {
 		report.Service.Active = true
 		report.Service.Mode = "systemd"
-	} else if controllerErr == nil {
+	} else if in.ControllerErr == nil {
 		report.Service.Active = true
 		report.Service.Mode = "process"
 	} else {
 		report.Service.Mode = "stopped"
 	}
-	if binaryErr != nil {
-		report.Binary.Error = binaryErr.Error()
+	if in.BinaryErr != nil {
+		report.Binary.Error = in.BinaryErr.Error()
 	} else {
-		report.Binary.Version = binaryVersion
+		report.Binary.Version = in.BinaryVersion
 	}
-	if controllerErr != nil {
-		report.Controller.Error = controllerErr.Error()
+	if in.ControllerErr != nil {
+		report.Controller.Error = in.ControllerErr.Error()
 	}
-	if groupsErr != nil {
-		report.GroupsError = groupsErr.Error()
-	} else if len(groups) > 0 {
-		report.Groups = make([]statusProxyGroupReport, 0, len(groups))
-		for _, name := range sortedProxyGroupNames(groups) {
-			group := groups[name]
+	if in.GroupsErr != nil {
+		report.GroupsError = in.GroupsErr.Error()
+	} else if len(in.Groups) > 0 {
+		report.Groups = make([]statusProxyGroupReport, 0, len(in.Groups))
+		for _, name := range sortedProxyGroupNames(in.Groups) {
+			group := in.Groups[name]
 			report.Groups = append(report.Groups, statusProxyGroupReport{
 				Name:      name,
 				Type:      mihomo.NormalizeProxyType(group.Type),
@@ -180,16 +199,16 @@ func buildStatusReport(cfg *core.AppConfig, proxyEnv []string, serviceActive boo
 			})
 		}
 	}
-	if inventoryErr != nil {
-		report.InventoryError = inventoryErr.Error()
-	} else if inventory != nil {
+	if in.InventoryErr != nil {
+		report.InventoryError = in.InventoryErr.Error()
+	} else if in.Inventory != nil {
 		report.Inventory = &statusInventoryReport{
-			Loaded:         inventory.Loaded,
-			Current:        inventory.Current,
-			Candidates:     append([]string(nil), inventory.Candidates...),
-			OnlyCompatible: inventory.OnlyCompatible,
+			Loaded:         in.Inventory.Loaded,
+			Current:        in.Inventory.Current,
+			Candidates:     append([]string(nil), in.Inventory.Candidates...),
+			OnlyCompatible: in.Inventory.OnlyCompatible,
 		}
-		if inventory.OnlyCompatible {
+		if in.Inventory.OnlyCompatible {
 			report.Warnings = append(report.Warnings, "订阅节点未成功加载；当前仅剩 COMPATIBLE，可改用 clashctl config import 生成静态配置")
 		}
 	}

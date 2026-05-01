@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"clashctl/internal/core"
 	"clashctl/internal/mihomo"
 )
 
@@ -32,14 +33,14 @@ var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "环境自检",
 	Long:  `检查当前环境是否满足 Mihomo 的运行条件；传入 --tun 时会额外检查 TUN 相关条件。`,
-	RunE:  runDoctor,
+	RunE:  withAppConfig(runDoctor),
 }
 
 var doctorOpenAICmd = &cobra.Command{
 	Use:   "openai",
 	Short: "诊断 OpenAI/Codex 登录链路",
 	Long:  `检查当前 shell 代理环境、直连/代理出口地区，以及 auth.openai.com / api.openai.com / chatgpt.com/backend-api 的可达性。`,
-	RunE:  runDoctorOpenAI,
+	RunE:  withAppConfig(runDoctorOpenAI),
 }
 
 func init() {
@@ -49,12 +50,7 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 }
 
-func runDoctor(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runDoctor(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	results := mihomo.RunDoctor(cfg.ConfigDir, cfg.ControllerAddr, cfg.ControllerSecret, doctorTunMode)
 	report := buildDoctorReport("doctor", doctorTunMode, results, nil)
 	if doctorJSON {
@@ -69,12 +65,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	return printDoctorResults(os.Stdout, report)
 }
 
-func runDoctorOpenAI(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runDoctorOpenAI(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	report := mihomo.RunOpenAIDoctor(cfg.MixedPort)
 	result := buildDoctorReport("doctor openai", false, report.Results, report.Hints)
 	if doctorJSON {

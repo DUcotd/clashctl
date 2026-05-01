@@ -1,13 +1,14 @@
 package subscription
 
 import (
-	"bufio"
 	"encoding/base64"
 	"fmt"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+
+	"clashctl/internal/system"
 )
 
 type ParseResult struct {
@@ -23,7 +24,7 @@ func Parse(content []byte) (*ParseResult, error) {
 	}
 
 	decoded, format := normalize(text)
-	lines := splitLines(decoded)
+	lines := system.SplitLines(decoded)
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("未找到可解析的节点链接")
 	}
@@ -58,49 +59,26 @@ func Parse(content []byte) (*ParseResult, error) {
 }
 
 func normalize(text string) (string, string) {
-	if looksLikeLinks(text) {
-		return text, "raw-links"
-	}
-
-	compact := strings.Map(func(r rune) rune {
-		switch r {
-		case '\n', '\r', '\t', ' ':
-			return -1
-		default:
-			return r
+	kind := system.ProbeContentKind([]byte(text))
+	switch kind {
+	case "raw-links":
+		return text, kind
+	case "base64-links":
+		compact := strings.Map(func(r rune) rune {
+			switch r {
+			case '\n', '\r', '\t', ' ':
+				return -1
+			default:
+				return r
+			}
+		}, text)
+		if decoded, err := base64.StdEncoding.DecodeString(compact); err == nil {
+			return strings.TrimSpace(string(decoded)), kind
 		}
-	}, text)
-
-	if decoded, err := base64.StdEncoding.DecodeString(compact); err == nil {
-		decodedText := strings.TrimSpace(string(decoded))
-		if looksLikeLinks(decodedText) {
-			return decodedText, "base64-links"
-		}
+		return text, "unknown"
+	default:
+		return text, "unknown"
 	}
-
-	return text, "unknown"
-}
-
-func looksLikeLinks(text string) bool {
-	for _, line := range splitLines(text) {
-		if strings.HasPrefix(line, "vless://") || strings.HasPrefix(line, "trojan://") || strings.HasPrefix(line, "hysteria2://") {
-			return true
-		}
-	}
-	return false
-}
-
-func splitLines(text string) []string {
-	s := bufio.NewScanner(strings.NewReader(text))
-	var out []string
-	for s.Scan() {
-		line := strings.TrimSpace(s.Text())
-		if line == "" {
-			continue
-		}
-		out = append(out, line)
-	}
-	return out
 }
 
 func parseLine(line string) (map[string]any, string, error) {

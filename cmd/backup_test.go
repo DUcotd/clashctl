@@ -56,7 +56,7 @@ func TestRunBackupCreatesMihomoAndClashctlBackups(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := runBackup(nil, nil); err != nil {
+	if err := runBackup(nil, nil, cfg); err != nil {
 		t.Fatalf("runBackup() error = %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestRunRestoreRestoresMihomoConfig(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := runRestore(nil, []string{backupName}); err != nil {
+	if err := runRestore(nil, []string{backupName}, cfg); err != nil {
 		t.Fatalf("runRestore() error = %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestRunRestoreRestoresMihomoConfig(t *testing.T) {
 
 func TestRunRestoreRestoresClashctlConfig(t *testing.T) {
 	home := setupCmdTestHome(t)
-	_ = writeTestAppConfig(t, home)
+	cfg := writeTestAppConfig(t, home)
 
 	targetPath, err := app.ConfigPath()
 	if err != nil {
@@ -141,7 +141,7 @@ func TestRunRestoreRestoresClashctlConfig(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := runRestore(nil, []string{backupName}); err != nil {
+	if err := runRestore(nil, []string{backupName}, cfg); err != nil {
 		t.Fatalf("runRestore() error = %v", err)
 	}
 
@@ -226,7 +226,7 @@ func TestRunRestoreCreatesMissingTargetDir(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if err := runRestore(nil, []string{backupName}); err != nil {
+	if err := runRestore(nil, []string{backupName}, cfg); err != nil {
 		t.Fatalf("runRestore() error = %v", err)
 	}
 
@@ -241,7 +241,7 @@ func TestRunRestoreCreatesMissingTargetDir(t *testing.T) {
 
 func TestRunRestoreRejectsPathTraversalBackupName(t *testing.T) {
 	home := setupCmdTestHome(t)
-	_ = writeTestAppConfig(t, home)
+	cfg := writeTestAppConfig(t, home)
 
 	backupDir := backupDirForHome(home)
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
@@ -253,7 +253,7 @@ func TestRunRestoreRejectsPathTraversalBackupName(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err := runRestore(nil, []string{"../outside.yaml"})
+	err := runRestore(nil, []string{"../outside.yaml"}, cfg)
 	if err == nil {
 		t.Fatal("runRestore() should reject path traversal backup names")
 	}
@@ -280,7 +280,7 @@ func TestRunRestoreRejectsInvalidMihomoBackup(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err := runRestore(nil, []string{backupName})
+	err := runRestore(nil, []string{backupName}, cfg)
 	if err == nil {
 		t.Fatal("runRestore() should reject invalid backup content")
 	}
@@ -299,7 +299,7 @@ func TestRunRestoreRejectsInvalidMihomoBackup(t *testing.T) {
 
 func TestRunRestoreRejectsOversizedBackup(t *testing.T) {
 	home := setupCmdTestHome(t)
-	_ = writeTestAppConfig(t, home)
+	cfg := writeTestAppConfig(t, home)
 
 	backupDir := backupDirForHome(home)
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
@@ -311,7 +311,7 @@ func TestRunRestoreRejectsOversizedBackup(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	err := runRestore(nil, []string{backupName})
+	err := runRestore(nil, []string{backupName}, cfg)
 	if err == nil {
 		t.Fatal("runRestore() should reject oversized backups")
 	}

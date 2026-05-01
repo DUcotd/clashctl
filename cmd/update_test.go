@@ -18,9 +18,9 @@ func TestFinishUpdateReportStoresError(t *testing.T) {
 	t.Cleanup(func() { updateJSON = prev })
 	updateJSON = false
 	report := &updateRunReport{CurrentVersion: "v1.0.0", Action: "check"}
-	err := finishUpdateReport(report, errors.New("boom"))
+	err := finishReport(report, errors.New("boom"), false)
 	if err == nil || err.Error() != "boom" {
-		t.Fatalf("finishUpdateReport() error = %v", err)
+		t.Fatalf("finishReport() error = %v", err)
 	}
 	if report.Error != "boom" {
 		t.Fatalf("report.Error = %q, want boom", report.Error)

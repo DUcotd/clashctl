@@ -10,9 +10,11 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"clashctl/internal/core"
 )
+
+// UserAgentVersion is set at startup from core.AppVersion.
+// Default "dev" is overwritten by cmd.Execute() before any command runs.
+var UserAgentVersion = "dev"
 
 type URLProbeResult struct {
 	StatusCode  int
@@ -39,7 +41,7 @@ func ProbeURL(rawURL string, timeout time.Duration) (*URLProbeResult, error) {
 		return nil, fmt.Errorf("无法构建请求: %w", err)
 	}
 	// Some providers require a User-Agent to return proper content
-	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+	req.Header.Set("User-Agent", "clashctl/"+UserAgentVersion)
 
 	client := directHTTPClient(timeout)
 	resp, err := client.Do(req)
@@ -67,7 +69,7 @@ func FetchURLContent(rawURL string, timeout time.Duration, maxSize int64) ([]byt
 	if err != nil {
 		return nil, nil, fmt.Errorf("无法构建请求: %w", err)
 	}
-	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+	req.Header.Set("User-Agent", "clashctl/"+UserAgentVersion)
 
 	resp, err := directHTTPClient(timeout).Do(req)
 	if err != nil {
@@ -92,8 +94,23 @@ func FetchURLContent(rawURL string, timeout time.Duration, maxSize int64) ([]byt
 	return body, probe, nil
 }
 
+var (
+	proxyEnvKeys = []string{
+		"http_proxy", "https_proxy", "all_proxy",
+		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+	}
+	proxyEnvDisplayKeys = func() []string {
+		out := append([]string(nil), proxyEnvKeys...)
+		return append(out, "NODE_USE_ENV_PROXY")
+	}()
+	proxyEnvStripKeys = func() []string {
+		out := append([]string(nil), proxyEnvDisplayKeys...)
+		return append(out, "no_proxy", "NO_PROXY")
+	}()
+)
+
 func hasProxyEnv() bool {
-	for _, key := range []string{"http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"} {
+	for _, key := range proxyEnvKeys {
 		if strings.TrimSpace(os.Getenv(key)) != "" {
 			return true
 		}
@@ -108,18 +125,9 @@ func HasProxyEnvForDisplay() bool {
 
 // ProxyEnvForDisplay returns the currently exported proxy variables.
 func ProxyEnvForDisplay() []string {
-	keys := []string{
-		"http_proxy",
-		"https_proxy",
-		"all_proxy",
-		"HTTP_PROXY",
-		"HTTPS_PROXY",
-		"ALL_PROXY",
-		"NODE_USE_ENV_PROXY",
-	}
-	seen := make(map[string]struct{}, len(keys))
+	seen := make(map[string]struct{}, len(proxyEnvDisplayKeys))
 	var out []string
-	for _, key := range keys {
+	for _, key := range proxyEnvDisplayKeys {
 		value := strings.TrimSpace(os.Getenv(key))
 		if value == "" {
 			continue
@@ -136,16 +144,9 @@ func ProxyEnvForDisplay() []string {
 
 // StripProxyEnv removes proxy-related variables from an environment list.
 func StripProxyEnv(env []string) []string {
-	blocked := map[string]struct{}{
-		"http_proxy":         {},
-		"https_proxy":        {},
-		"all_proxy":          {},
-		"HTTP_PROXY":         {},
-		"HTTPS_PROXY":        {},
-		"ALL_PROXY":          {},
-		"NODE_USE_ENV_PROXY": {},
-		"no_proxy":           {},
-		"NO_PROXY":           {},
+	blocked := make(map[string]struct{}, len(proxyEnvStripKeys))
+	for _, k := range proxyEnvStripKeys {
+		blocked[k] = struct{}{}
 	}
 	out := make([]string, 0, len(env))
 	for _, entry := range env {

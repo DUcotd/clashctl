@@ -48,6 +48,8 @@ type updateRunReport struct {
 	Error          string `json:"error,omitempty"`
 }
 
+func (r *updateRunReport) SetError(msg string) { r.Error = msg }
+
 var updateCmd = &cobra.Command{
 	Use:     "update",
 	Aliases: []string{"self"},
@@ -80,7 +82,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Fetch latest release info
 	release, err := releases.FetchLatestGitHubRelease(githubOwner, githubRepo, updatePreRelease, mihomo.GetGitHubMirrorURL)
 	if err != nil {
-		return finishUpdateReport(report, fmt.Errorf("检查更新失败: %w", err))
+		return finishReport(report, fmt.Errorf("检查更新失败: %w", err), updateJSON)
 	}
 
 	latestTag := release.TagName
@@ -99,7 +101,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			if !updateJSON {
 				fmt.Println("\n✅ 已是最新版本！")
 			}
-			return finishUpdateReport(report, nil)
+			return finishReport(report, nil, updateJSON)
 		}
 		report.Action = "update"
 		if !updateJSON {
@@ -117,7 +119,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			fmt.Println("\nℹ️  运行模式：仅检查（dry-run）")
 			fmt.Printf("   可更新到: %s\n", latestTag)
 		}
-		return finishUpdateReport(report, nil)
+		return finishReport(report, nil, updateJSON)
 	}
 
 	// Find the right binary for current platform
@@ -125,7 +127,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	report.BinaryName = binaryName
 	releaseAsset, ok := releases.FindGitHubReleaseAsset(release, binaryName)
 	if !ok {
-		return finishUpdateReport(report, fmt.Errorf("未找到适用于 %s/%s 的二进制文件", runtime.GOOS, runtime.GOARCH))
+		return finishReport(report, fmt.Errorf("未找到适用于 %s/%s 的二进制文件", runtime.GOOS, runtime.GOARCH), updateJSON)
 	}
 	downloadURL := releaseAsset.BrowserDownloadURL
 	report.DownloadURL = downloadURL
@@ -133,7 +135,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	assets := releases.NamedDownloads(release)
 	checksumAsset, ok = system.FindChecksumAsset(assets, binaryName)
 	if !ok {
-		return finishUpdateReport(report, fmt.Errorf("发布缺少 %s 的校验文件", binaryName))
+		return finishReport(report, fmt.Errorf("发布缺少 %s 的校验文件", binaryName), updateJSON)
 	}
 
 	if !updateJSON {
@@ -143,7 +145,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Get current binary path
 	selfPath, err := os.Executable()
 	if err != nil {
-		return finishUpdateReport(report, fmt.Errorf("无法获取当前程序路径: %w", err))
+		return finishReport(report, fmt.Errorf("无法获取当前程序路径: %w", err), updateJSON)
 	}
 
 	// Check write permission
@@ -154,7 +156,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			fmt.Println("\n⚠️  更新需要 root 权限")
 			fmt.Println("请使用 sudo clashctl update")
 		}
-		return finishUpdateReport(report, err)
+		return finishReport(report, err, updateJSON)
 	}
 
 	if !updateJSON {
@@ -164,26 +166,26 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Download new binary to a unique temp file next to the current executable
 	tmpPath, err := system.CreateSiblingTempFile(selfPath, ".tmp-*")
 	if err != nil {
-		return finishUpdateReport(report, fmt.Errorf("创建更新临时文件失败: %w", err))
+		return finishReport(report, fmt.Errorf("创建更新临时文件失败: %w", err), updateJSON)
 	}
 	defer func() {
 		_ = os.Remove(tmpPath)
 	}()
 	asset := system.NamedDownload{Name: binaryName, URL: downloadURL}
 	if err := releases.DownloadVerifiedGitHubAsset(asset, checksumAsset, mihomo.GetGitHubMirrorURL, tmpPath); err != nil {
-		return finishUpdateReport(report, fmt.Errorf("下载失败: %w", err))
+		return finishReport(report, fmt.Errorf("下载失败: %w", err), updateJSON)
 	}
 
 	// Make executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return finishUpdateReport(report, fmt.Errorf("设置权限失败: %w", err))
+		return finishReport(report, fmt.Errorf("设置权限失败: %w", err), updateJSON)
 	}
 	if err := validateDownloadedClashctlBinary(tmpPath); err != nil {
-		return finishUpdateReport(report, fmt.Errorf("下载的 clashctl 二进制不可用: %w", err))
+		return finishReport(report, fmt.Errorf("下载的 clashctl 二进制不可用: %w", err), updateJSON)
 	}
 
 	if err := replaceCurrentExecutable(tmpPath, selfPath); err != nil {
-		return finishUpdateReport(report, err)
+		return finishReport(report, err, updateJSON)
 	}
 	report.Updated = true
 	report.Action = "update"
@@ -194,23 +196,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Println("\n运行 'clashctl --help' 查看新版本功能")
 	}
 
-	return finishUpdateReport(report, nil)
+	return finishReport(report, nil, updateJSON)
 }
 
 func hasAlias(cmd *cobra.Command, alias string) bool {
 	return slices.Contains(cmd.Aliases, alias)
-}
-
-func finishUpdateReport(report *updateRunReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if updateJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
 }
 
 func replaceCurrentExecutable(srcPath, destPath string) error {

@@ -64,7 +64,7 @@ var backupCmd = &cobra.Command{
 	Use:   "backup",
 	Short: "备份当前配置",
 	Long:  `备份 Mihomo 配置文件到 ~/.config/clashctl/backup/ 目录。`,
-	RunE:  runBackup,
+	RunE:  withAppConfig(runBackup),
 }
 
 var backupRestoreCmd = &cobra.Command{
@@ -72,7 +72,7 @@ var backupRestoreCmd = &cobra.Command{
 	Short: "恢复历史配置",
 	Long:  `从备份中恢复配置文件。不指定版本则列出可用备份。`,
 	Args:  cobra.MaximumNArgs(1),
-	RunE:  runRestore,
+	RunE:  withAppConfig(runRestore),
 }
 
 var backupListCmd = &cobra.Command{
@@ -102,12 +102,7 @@ func backupDirForHome(home string) string {
 	return filepath.Join(home, ".config", "clashctl", "backup")
 }
 
-func runBackup(cmd *cobra.Command, args []string) error {
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
-	}
-
+func runBackup(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	backupDir, err := BackupDir()
 	if err != nil {
 		return err
@@ -266,7 +261,7 @@ func printBackupList(report *backupListReport) {
 	fmt.Println("使用 'clashctl backup restore <文件名>' 恢复配置")
 }
 
-func runRestore(cmd *cobra.Command, args []string) error {
+func runRestore(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	backupDir, err := BackupDir()
 	if err != nil {
 		return err
@@ -293,12 +288,6 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	// Check if backup exists
 	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
 		return fmt.Errorf("备份文件不存在: %s", backupName)
-	}
-
-	// Determine target based on backup name
-	cfg, err := loadAppConfig()
-	if err != nil {
-		return err
 	}
 
 	var targetPath string

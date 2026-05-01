@@ -37,6 +37,8 @@ type installRunReport struct {
 	Error         string             `json:"error,omitempty"`
 }
 
+func (r *installRunReport) SetError(msg string) { r.Error = msg }
+
 var serviceInstallCmd = &cobra.Command{
 	Use:   "install",
 	Short: "安装 Mihomo 内核",
@@ -46,25 +48,25 @@ var serviceInstallCmd = &cobra.Command{
 var serviceStartCmd = &cobra.Command{
 	Use:   "start",
 	Short: "启动 Mihomo 服务",
-	RunE:  runStart,
+	RunE:  withAppConfig(runStart),
 }
 
 var serviceStopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "停止 Mihomo 服务",
-	RunE:  runStop,
+	RunE:  withAppConfig(runStop),
 }
 
 var serviceRestartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "重启 Mihomo 服务",
-	RunE:  runRestart,
+	RunE:  withAppConfig(runRestart),
 }
 
 var serviceStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "查看 Mihomo 运行状态",
-	RunE:  runStatus,
+	RunE:  withAppConfig(runStatus),
 }
 
 func init() {
@@ -77,6 +79,14 @@ func init() {
 	rootCmd.AddCommand(serviceCmd)
 }
 
+func defaultStartOptions() mihomo.StartOptions {
+	return mihomo.StartOptions{
+		VerifyInventory: true,
+		WaitRetries:     15,
+		WaitInterval:    2 * time.Second,
+	}
+}
+
 func bindInstallFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&installJSON, "json", false, "以 JSON 输出安装结果")
 }
@@ -85,7 +95,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	report := &installRunReport{}
 	if err := system.RequireRoot(); err != nil {
 		report.RequiresRoot = true
-		return finishInstallReport(report, err)
+		return finishReport(report, err, installJSON)
 	}
 
 	if binary, err := mihomo.FindBinary(); err == nil {
@@ -95,12 +105,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if !installJSON {
 			printInstallStatus(os.Stdout, binary, version)
 		}
-		return finishInstallReport(report, nil)
+		return finishReport(report, nil, installJSON)
 	}
 
 	result, err := mihomo.InstallMihomo()
 	if err != nil {
-		return finishInstallReport(report, fmt.Errorf("安装失败: %w", err))
+		return finishReport(report, fmt.Errorf("安装失败: %w", err), installJSON)
 	}
 	report.Installed = true
 	report.Binary = &installJSONReport{
@@ -113,22 +123,10 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		printInstallResult(os.Stdout, result)
 	}
 
-	return finishInstallReport(report, nil)
+	return finishReport(report, nil, installJSON)
 }
 
-func finishInstallReport(report *installRunReport, err error) error {
-	if err != nil && report != nil {
-		report.Error = err.Error()
-	}
-	if installJSON && report != nil {
-		if writeErr := writeJSON(report); writeErr != nil {
-			return writeErr
-		}
-	}
-	return err
-}
-
-func runStart(cmd *cobra.Command, args []string) error {
+func runStart(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务启动"); err != nil {
 			return err
@@ -137,17 +135,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("🚀 正在启动 Mihomo...")
 
-	cfg, err := loadAppConfigFn()
-	if err != nil {
-		return err
-	}
-
 	runtime := newRuntimeManager()
-	result, err := startRuntimeFn(runtime, cfg, mihomo.StartOptions{
-		VerifyInventory: true,
-		WaitRetries:     15,
-		WaitInterval:    2 * time.Second,
-	})
+	result, err := startRuntimeFn(runtime, cfg, defaultStartOptions())
 	printRuntimeStartResult(os.Stdout, result)
 	if err != nil {
 		return err
@@ -155,7 +144,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runStop(cmd *cobra.Command, args []string) error {
+func runStop(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务停止"); err != nil {
 			return err
@@ -163,10 +152,6 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("🛑 正在停止 Mihomo...")
-	cfg, err := loadAppConfigFn()
-	if err != nil {
-		return err
-	}
 
 	if hasSystemdFn() {
 		if err := mihomo.StopService(mihomo.DefaultServiceName); err == nil {
@@ -188,7 +173,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runRestart(cmd *cobra.Command, args []string) error {
+func runRestart(cmd *cobra.Command, args []string, cfg *core.AppConfig) error {
 	if hasSystemdFn() {
 		if err := system.RequireRootForOperation("systemd 服务重启"); err != nil {
 			return err
@@ -196,17 +181,9 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("🔄 正在重启 Mihomo...")
-	cfg, err := loadAppConfigFn()
-	if err != nil {
-		return err
-	}
 
 	runtime := newRuntimeManager()
-	result, err := startRuntimeFn(runtime, cfg, mihomo.StartOptions{
-		VerifyInventory: true,
-		WaitRetries:     15,
-		WaitInterval:    2 * time.Second,
-	})
+	result, err := startRuntimeFn(runtime, cfg, defaultStartOptions())
 	printRuntimeStartResult(os.Stdout, result)
 	if err != nil {
 		return fmt.Errorf("重启失败: %w", err)

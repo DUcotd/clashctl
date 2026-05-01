@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"clashctl/internal/core"
 	"clashctl/internal/netsec"
 )
 
@@ -119,7 +118,7 @@ func fetchPreparedSubscription(rawURL string, timeout time.Duration) ([]byte, st
 	if err != nil {
 		return nil, "", fmt.Errorf("构建订阅请求失败: %w", err)
 	}
-	req.Header.Set("User-Agent", "clashctl/"+core.AppVersion)
+	req.Header.Set("User-Agent", "clashctl/"+UserAgentVersion)
 
 	resp, err := newPreparedSubscriptionHTTPClient(timeout).Do(req)
 	if err != nil {

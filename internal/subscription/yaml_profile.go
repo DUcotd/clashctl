@@ -142,17 +142,7 @@ func sanitizeRemoteYAMLDocument(doc map[string]any, cfg *core.AppConfig) (map[st
 }
 
 func buildPatchedTUNConfig() *core.TUNConfig {
-	return &core.TUNConfig{
-		Enable:              true,
-		Stack:               "mixed",
-		AutoRoute:           true,
-		AutoRedirect:        true,
-		AutoDetectInterface: true,
-		DNSHijack: []string{
-			"any:53",
-			"tcp://any:53",
-		},
-	}
+	return core.DefaultTUNConfig()
 }
 
 func sanitizeProxyList(value any) []any {

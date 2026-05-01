@@ -9,6 +9,24 @@ import (
 	"clashctl/internal/mihomo"
 )
 
+// errorReporter is implemented by all JSON report structs that carry an Error field.
+type errorReporter interface {
+	SetError(msg string)
+}
+
+// finishReport writes a JSON report when jsonFlag is true and returns err.
+func finishReport[T errorReporter](report T, err error, jsonFlag bool) error {
+	if err != nil {
+		report.SetError(err.Error())
+	}
+	if jsonFlag {
+		if writeErr := writeJSON(report); writeErr != nil {
+			return writeErr
+		}
+	}
+	return err
+}
+
 type installJSONReport struct {
 	Path       string `json:"path,omitempty"`
 	Version    string `json:"version,omitempty"`

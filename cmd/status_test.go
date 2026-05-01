@@ -79,7 +79,12 @@ func TestBuildStatusReportIncludesSortedGroupsAndWarnings(t *testing.T) {
 		OnlyCompatible: true,
 	}
 
-	report := buildStatusReport(cfg, []string{"HTTP_PROXY=http://127.0.0.1:7890"}, false, nil, "/usr/local/bin/mihomo", "1.19.10", nil, "1.19.10", nil, groups, nil, inventory, nil)
+	report := buildStatusReport(&statusReportInput{
+		Cfg: cfg, ProxyEnv: []string{"HTTP_PROXY=http://127.0.0.1:7890"},
+		Binary: "/usr/local/bin/mihomo", BinaryVersion: "1.19.10",
+		ControllerVersion: "1.19.10",
+		Groups: groups, Inventory: inventory,
+	})
 
 	if !report.Service.Active || report.Service.Mode != "process" {
 		t.Fatalf("service = %#v", report.Service)

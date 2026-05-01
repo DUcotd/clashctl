@@ -8,7 +8,7 @@ var restoreCmd = &cobra.Command{
 	Long:   `从备份中恢复配置文件。不指定版本则列出可用备份。`,
 	Args:   cobra.MaximumNArgs(1),
 	Hidden: true,
-	RunE:   legacyRunner("clashctl restore", "clashctl backup restore", runRestore),
+	RunE:   legacyRunner("clashctl restore", "clashctl backup restore", withAppConfig(runRestore)),
 }
 
 var advancedCmd = &cobra.Command{
@@ -44,13 +44,13 @@ var advancedConfigCmd = &cobra.Command{
 var advancedConfigShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "显示当前 Mihomo 配置",
-	RunE:  legacyRunner("clashctl advanced config show", "clashctl config show", runConfigShow),
+	RunE:  legacyRunner("clashctl advanced config show", "clashctl config show", withAppConfig(runConfigShow)),
 }
 
 var advancedConfigPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "显示配置文件路径",
-	RunE:  legacyRunner("clashctl advanced config path", "clashctl config path", runConfigPath),
+	RunE:  legacyRunner("clashctl advanced config path", "clashctl config path", withAppConfig(runConfigPath)),
 }
 
 var startCmd = &cobra.Command{
@@ -58,21 +58,21 @@ var startCmd = &cobra.Command{
 	Short:  "启动 Mihomo 服务",
 	Long:   `根据已有配置文件启动 Mihomo。优先使用 systemd，否则以子进程方式启动。`,
 	Hidden: true,
-	RunE:   legacyRunner("clashctl start", "clashctl service start", runStart),
+	RunE:   legacyRunner("clashctl start", "clashctl service start", withAppConfig(runStart)),
 }
 
 var stopCmd = &cobra.Command{
 	Use:    "stop",
 	Short:  "停止 Mihomo 服务",
 	Hidden: true,
-	RunE:   legacyRunner("clashctl stop", "clashctl service stop", runStop),
+	RunE:   legacyRunner("clashctl stop", "clashctl service stop", withAppConfig(runStop)),
 }
 
 var restartCmd = &cobra.Command{
 	Use:    "restart",
 	Short:  "重启 Mihomo 服务",
 	Hidden: true,
-	RunE:   legacyRunner("clashctl restart", "clashctl service restart", runRestart),
+	RunE:   legacyRunner("clashctl restart", "clashctl service restart", withAppConfig(runRestart)),
 }
 
 var statusCmd = &cobra.Command{
@@ -80,7 +80,7 @@ var statusCmd = &cobra.Command{
 	Short:  "查看 Mihomo 运行状态",
 	Long:   `显示 Mihomo 服务状态、配置路径、controller 连接情况和当前代理组信息。`,
 	Hidden: true,
-	RunE:   legacyRunner("clashctl status", "clashctl service status", runStatus),
+	RunE:   legacyRunner("clashctl status", "clashctl service status", withAppConfig(runStatus)),
 }
 
 var installCmd = &cobra.Command{
@@ -118,7 +118,7 @@ var tuiNodesCmd = &cobra.Command{
 	Short:  "直接进入节点测速与切换界面",
 	Long:   `跳过 init 向导，直接进入代理组/节点管理 TUI，可测速并切换节点。`,
 	Hidden: true,
-	RunE:   legacyRunner("clashctl tui nodes", "clashctl nodes", runTUINodes),
+	RunE:   legacyRunner("clashctl tui nodes", "clashctl nodes", withAppConfig(runTUINodes)),
 }
 
 func init() {
