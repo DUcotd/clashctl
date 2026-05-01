@@ -21,8 +21,8 @@ MAX_RETRIES=3
 # ─── Colors ───
 # Disable colors if: NO_COLOR is set, TERM is dumb/empty, or stdout is not a tty
 if [ -t 1 ] && [ "${NO_COLOR:-}" != "1" ] && [ "${TERM:-}" != "dumb" ] && [ -n "${TERM:-}" ]; then
-    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
-    CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+    RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'
+    CYAN=$'\033[0;36m'; BOLD=$'\033[1m'; DIM=$'\033[2m'; RESET=$'\033[0m'
 else
     RED=''; GREEN=''; YELLOW=''; CYAN=''; BOLD=''; DIM=''; RESET=''
 fi
