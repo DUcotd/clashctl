@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -120,10 +121,7 @@ func InstallMihomo() (*InstallResult, error) {
 	if downloadURL == "" {
 		return nil, fmt.Errorf("未找到适用于 %s/%s 的 Mihomo 二进制文件", runtime.GOOS, runtime.GOARCH)
 	}
-	checksumAsset, err := findReleaseChecksumAsset(release, assetName)
-	if err != nil {
-		return nil, err
-	}
+	checksumAsset, _ := findReleaseChecksumAsset(release, assetName)
 
 	tmpPath, err := system.CreateSiblingTempFile(installedBinaryPath, ".download-*")
 	if err != nil {
@@ -258,20 +256,19 @@ func isPlatformMatch(name, goos, goarch string) bool {
 	return strings.Contains(name, goarch)
 }
 
-func findReleaseChecksumAsset(release *MihomoRelease, assetName string) (system.NamedDownload, error) {
+func findReleaseChecksumAsset(release *MihomoRelease, assetName string) (system.NamedDownload, bool) {
 	assets := make([]system.NamedDownload, 0, len(release.Assets))
 	for _, asset := range release.Assets {
 		assets = append(assets, system.NamedDownload{Name: asset.Name, URL: asset.BrowserDownloadURL})
 	}
-	checksumAsset, ok := system.FindChecksumAsset(assets, assetName)
-	if !ok {
-		return system.NamedDownload{}, fmt.Errorf("发布缺少 %s 的校验文件", assetName)
-	}
-	return checksumAsset, nil
+	return system.FindChecksumAsset(assets, assetName)
 }
 
 // downloadBinary downloads a verified file to destPath.
 func downloadBinary(asset, checksumAsset system.NamedDownload, destPath string) error {
+	if checksumAsset.Name == "" {
+		return downloadFileDirect(asset, destPath)
+	}
 	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
 		if !system.AllowUntrustedMirrorDownloads() {
 			return err
@@ -288,6 +285,19 @@ func downloadBinary(asset, checksumAsset system.NamedDownload, destPath string) 
 		return err
 	}
 	return nil
+}
+
+func downloadFileDirect(asset system.NamedDownload, destPath string) error {
+	req, err := http.NewRequest(http.MethodGet, asset.URL, nil)
+	if err != nil {
+		return err
+	}
+	return system.DownloadFileWithOptions(
+		system.NewHTTPClient(5*time.Minute, false),
+		req,
+		destPath,
+		system.DownloadOptions{Atomic: true},
+	)
 }
 
 // downloadAndDecompressGz downloads a verified gzip-compressed file and decompresses it to destPath.
