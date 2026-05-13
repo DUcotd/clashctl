@@ -182,6 +182,9 @@ func newPreparedSubscriptionHTTPClient(timeout time.Duration) *http.Client {
 			if len(via) >= MaxRedirects {
 				return fmt.Errorf("重定向次数过多 (超过 %d 次)，可能存在重定向循环", MaxRedirects)
 			}
+			if err := validateRedirectTarget(req, timeout); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

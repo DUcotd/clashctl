@@ -198,6 +198,10 @@ func sanitizeProxyProvider(name string, provider map[string]any, cfg *core.AppCo
 	if !ok {
 		return nil, []string{"proxy-providers." + name + ".url"}
 	}
+	// URL is validated at config-write time using DNS resolution. Mihomo will
+	// fetch this URL independently at runtime; DNS rebinding between now and
+	// then is a theoretical concern mitigated by mihomo's own network security
+	// and the fact that provider URLs typically point to well-known CDNs.
 	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
 		return nil, []string{"proxy-providers." + name + ".url"}
 	}
@@ -322,6 +326,8 @@ func sanitizeRuleProvider(name string, provider map[string]any, cfg *core.AppCon
 	if !ok {
 		return nil, []string{"rule-providers." + name + ".url"}
 	}
+	// URL is validated at config-write time using DNS resolution; see
+	// sanitizeProxyProvider for discussion of the runtime-fetch gap.
 	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{ResolveHost: true}); err != nil {
 		return nil, []string{"rule-providers." + name + ".url"}
 	}

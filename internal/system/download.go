@@ -11,12 +11,20 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"clashctl/internal/netsec"
 )
 
 const MaxJSONResponseBytes = 4 * 1024 * 1024
 
 // FetchJSON fetches a JSON document and decodes it into dest.
 func FetchJSON(url string, timeout time.Duration, dest any) error {
+	if _, err := netsec.ValidateRemoteHTTPURL(url, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return fmt.Errorf("URL 不安全: %w", err)
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -53,6 +61,12 @@ func FetchJSONWithDoer(doer HTTPDoer, req *http.Request, dest any) error {
 
 // DownloadFile downloads a file from url to destPath.
 func DownloadFile(url, destPath string) error {
+	if _, err := netsec.ValidateRemoteHTTPURL(url, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     5 * time.Minute,
+	}); err != nil {
+		return fmt.Errorf("URL 不安全: %w", err)
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -73,6 +87,12 @@ type DownloadOptions struct {
 
 // DownloadBytes fetches a URL and returns its body.
 func DownloadBytes(url string, timeout time.Duration) ([]byte, error) {
+	if _, err := netsec.ValidateRemoteHTTPURL(url, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return nil, fmt.Errorf("URL 不安全: %w", err)
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -82,6 +102,12 @@ func DownloadBytes(url string, timeout time.Duration) ([]byte, error) {
 
 // DownloadBytesLimit fetches a URL and enforces a maximum response size.
 func DownloadBytesLimit(url string, timeout time.Duration, maxBytes int64) ([]byte, error) {
+	if _, err := netsec.ValidateRemoteHTTPURL(url, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return nil, fmt.Errorf("URL 不安全: %w", err)
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

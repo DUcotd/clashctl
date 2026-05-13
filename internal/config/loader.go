@@ -22,6 +22,9 @@ const (
 // BackupFile creates a timestamped backup of an existing file.
 // Returns the backup path or an error.
 func BackupFile(path string) (string, error) {
+	if err := system.ValidateOutputPath(path); err != nil {
+		return "", fmt.Errorf("路径不安全: %w", err)
+	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return "", nil // nothing to back up
 	}
@@ -100,6 +103,9 @@ func countYAMLNodes(node *yaml.Node) int {
 
 // ReadConfigWithLimit reads a config file with size limit.
 func ReadConfigWithLimit(path string) ([]byte, error) {
+	if err := system.ValidateOutputPath(path); err != nil {
+		return nil, fmt.Errorf("路径不安全: %w", err)
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("读取 %s 失败: %w", path, err)

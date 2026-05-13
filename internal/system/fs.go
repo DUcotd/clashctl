@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // ReplaceFileOptions controls replacement behavior.
@@ -147,6 +148,16 @@ func ReplaceFile(srcPath, destPath string, opts ReplaceFileOptions) error {
 		return fmt.Errorf("检查目标文件失败: %w", err)
 	}
 
+	// Final TOCTOU check: re-verify no symlink was swapped in
+	if linfo, err := os.Lstat(destPath); err == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			if hadExisting {
+				_ = os.Rename(backupPath, destPath)
+			}
+			return fmt.Errorf("拒绝覆盖符号链接 (TOCTOU): %s", destPath)
+		}
+	}
+
 	if err := os.Rename(srcPath, destPath); err != nil {
 		if hadExisting {
 			_ = os.Rename(backupPath, destPath)
@@ -200,6 +211,53 @@ var dangerousPaths = []string{
 	"/lib64",
 	"/usr/lib",
 	"/usr/lib64",
+}
+
+var (
+	registeredOutputRoots   []string
+	registeredOutputRootsMu sync.RWMutex
+)
+
+// RegisterAllowedOutputRoot adds a resolved path to the allowed output root set.
+// Returns an unregister function for scoped use.
+func RegisterAllowedOutputRoot(path string) (unregister func(), err error) {
+	resolved, err := resolvePathForWrite(filepath.Clean(path))
+	if err != nil {
+		return nil, fmt.Errorf("无法解析注册路径 %s: %w", path, err)
+	}
+	if resolved == "/" || resolved == "" {
+		return nil, fmt.Errorf("拒绝注册根路径: %s", resolved)
+	}
+	for _, dangerous := range dangerousPaths {
+		if resolved == dangerous || strings.HasPrefix(resolved, dangerous+"/") {
+			return nil, fmt.Errorf("拒绝注册系统路径: %s", resolved)
+		}
+	}
+	registeredOutputRootsMu.Lock()
+	registeredOutputRoots = append(registeredOutputRoots, resolved)
+	registeredOutputRootsMu.Unlock()
+	return func() { UnregisterAllowedOutputRoot(resolved) }, nil
+}
+
+// UnregisterAllowedOutputRoot removes a previously registered root.
+func UnregisterAllowedOutputRoot(path string) {
+	resolved := filepath.Clean(path)
+	registeredOutputRootsMu.Lock()
+	defer registeredOutputRootsMu.Unlock()
+	for i, root := range registeredOutputRoots {
+		if root == resolved {
+			registeredOutputRoots = append(registeredOutputRoots[:i], registeredOutputRoots[i+1:]...)
+			return
+		}
+	}
+}
+
+func registeredAllowedOutputRoots() []string {
+	registeredOutputRootsMu.RLock()
+	defer registeredOutputRootsMu.RUnlock()
+	out := make([]string, len(registeredOutputRoots))
+	copy(out, registeredOutputRoots)
+	return out
 }
 
 // ValidateOutputPath validates that an output path is safe to write to.
@@ -305,6 +363,7 @@ func allowedOutputRoots() []string {
 		}
 	}
 
+	roots = append(roots, registeredAllowedOutputRoots()...)
 	return roots
 }
 

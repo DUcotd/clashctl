@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
+	"clashctl/internal/netsec"
 	"clashctl/internal/system"
 )
 
@@ -57,12 +59,18 @@ type InstallResult struct {
 func GetGitHubMirrorURL(originalURL string) string {
 	if customMirror := os.Getenv("CLASHCTL_GITHUB_MIRROR"); customMirror != "" {
 		mirror := strings.TrimRight(customMirror, "/")
-		if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
-			mirrorURL, err := url.JoinPath(mirror, strings.TrimPrefix(originalURL, "https://"))
-			if err == nil {
-				return mirrorURL
+		if _, err := netsec.ValidateRemoteHTTPURL(mirror, netsec.URLValidationOptions{
+			ResolveHost: true,
+			Timeout:     5 * time.Second,
+		}); err == nil {
+			if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
+				mirrorURL, err := url.JoinPath(mirror, strings.TrimPrefix(originalURL, "https://"))
+				if err == nil {
+					return mirrorURL
+				}
 			}
 		}
+		// Invalid or private custom mirror → silently fall through to built-in mirrors
 	}
 
 	for _, mirror := range githubMirrors {
@@ -96,6 +104,12 @@ func EnsureMihomo() (*InstallResult, error) {
 
 // InstallMihomo downloads the latest mihomo binary to InstallPath.
 func InstallMihomo() (*InstallResult, error) {
+	unregister, err := system.RegisterAllowedOutputRoot(filepath.Dir(installedBinaryPath))
+	if err != nil {
+		return nil, fmt.Errorf("安装路径不安全: %w", err)
+	}
+	defer unregister()
+
 	release, err := fetchLatestMihomoRelease()
 	if err != nil {
 		return nil, fmt.Errorf("获取 Mihomo 版本信息失败: %w", err)

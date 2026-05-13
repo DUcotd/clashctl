@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"clashctl/internal/netsec"
 )
 
 // UserAgentVersion is set at startup from core.AppVersion.
@@ -36,6 +38,13 @@ func CheckURLReachable(rawURL string, timeout time.Duration) error {
 
 // ProbeURL fetches a URL with a lightweight GET and classifies the response shape.
 func ProbeURL(rawURL string, timeout time.Duration) (*URLProbeResult, error) {
+	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return nil, fmt.Errorf("URL 不安全: %w", err)
+	}
+
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("无法构建请求: %w", err)
@@ -65,6 +74,13 @@ func ProbeURL(rawURL string, timeout time.Duration) (*URLProbeResult, error) {
 
 // FetchURLContent fetches the full body of a URL using a direct connection.
 func FetchURLContent(rawURL string, timeout time.Duration, maxSize int64) ([]byte, *URLProbeResult, error) {
+	if _, err := netsec.ValidateRemoteHTTPURL(rawURL, netsec.URLValidationOptions{
+		ResolveHost: true,
+		Timeout:     timeout,
+	}); err != nil {
+		return nil, nil, fmt.Errorf("URL 不安全: %w", err)
+	}
+
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("无法构建请求: %w", err)
