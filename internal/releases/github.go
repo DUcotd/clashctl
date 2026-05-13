@@ -2,6 +2,7 @@ package releases
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -94,7 +95,7 @@ func NamedDownloads(release *GitHubRelease) []system.NamedDownload {
 // can satisfy integrity checks without proving authenticity. Operators who
 // explicitly accept that trade-off may set CLASHCTL_ALLOW_UNTRUSTED_MIRROR=1.
 func DownloadVerifiedGitHubAsset(asset, checksumAsset system.NamedDownload, mirror MirrorFunc, destPath string) error {
-	if err := system.DownloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
+	if err := downloadVerifiedFile(asset, checksumAsset, destPath); err != nil {
 		if !system.AllowUntrustedMirrorDownloads() {
 			return err
 		}
@@ -103,7 +104,7 @@ func DownloadVerifiedGitHubAsset(asset, checksumAsset system.NamedDownload, mirr
 		mirrorChecksum := checksumAsset
 		mirrorChecksum.URL = mirrorURL(checksumAsset.URL, mirror)
 		if mirrorAsset.URL != asset.URL {
-			if mirrorErr := system.DownloadVerifiedFile(mirrorAsset, mirrorChecksum, destPath); mirrorErr == nil {
+			if mirrorErr := downloadVerifiedFile(mirrorAsset, mirrorChecksum, destPath); mirrorErr == nil {
 				return nil
 			}
 		}
@@ -113,7 +114,18 @@ func DownloadVerifiedGitHubAsset(asset, checksumAsset system.NamedDownload, mirr
 }
 
 func fetchJSONWithFallback(url string, mirror MirrorFunc, dest any) error {
-	err := system.FetchJSON(url, 15*time.Second, dest)
+	doFetch := func(rawURL string) error {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			return err
+		}
+		return system.FetchJSONWithDoer(
+			system.NewHTTPClient(15*time.Second, false),
+			req,
+			dest,
+		)
+	}
+	err := doFetch(url)
 	if err == nil {
 		return nil
 	}
@@ -122,11 +134,39 @@ func fetchJSONWithFallback(url string, mirror MirrorFunc, dest any) error {
 	}
 	mirrorURL := mirrorURL(url, mirror)
 	if mirrorURL != url {
-		if mirrorErr := system.FetchJSON(mirrorURL, 15*time.Second, dest); mirrorErr == nil {
+		if mirrorErr := doFetch(mirrorURL); mirrorErr == nil {
 			return nil
 		}
 	}
 	return err
+}
+
+func downloadVerifiedFile(asset, checksumAsset system.NamedDownload, destPath string) error {
+	checksumReq, err := http.NewRequest(http.MethodGet, checksumAsset.URL, nil)
+	if err != nil {
+		return err
+	}
+	checksumData, err := system.DownloadBytesWithDoer(
+		system.NewHTTPClient(2*time.Minute, false),
+		checksumReq,
+	)
+	if err != nil {
+		return fmt.Errorf("下载校验文件失败: %w", err)
+	}
+	want, err := system.ExtractSHA256(checksumData, asset.Name)
+	if err != nil {
+		return err
+	}
+	assetReq, err := http.NewRequest(http.MethodGet, asset.URL, nil)
+	if err != nil {
+		return err
+	}
+	return system.DownloadFileWithOptions(
+		system.NewHTTPClient(5*time.Minute, false),
+		assetReq,
+		destPath,
+		system.DownloadOptions{ExpectedSHA256: want, Atomic: true},
+	)
 }
 
 func mirrorURL(url string, mirror MirrorFunc) string {
