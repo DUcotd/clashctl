@@ -26,3 +26,7 @@ clashctl
 
 # Build artifacts
 checksums-sha256.txt
+
+# Dev tools
+.commandcode/
+.opencode/
