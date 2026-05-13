@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mattn/go-runewidth"
+
 	"clashctl/internal/mihomo"
 )
 
@@ -402,8 +404,8 @@ func (m NodeManagerModel) renderStatusBar() string {
 	if m.testing {
 		statusLine += fmt.Sprintf(" │ 测速中: %d/%d", m.testDone, m.testTotal)
 	}
-	if len(statusLine) < barWidth {
-		statusLine += strings.Repeat(" ", barWidth-len(statusLine))
+	if statusWidth := runewidth.StringWidth(statusLine); statusWidth < barWidth {
+		statusLine += strings.Repeat(" ", barWidth-statusWidth)
 	}
 
 	helpLine := " "
@@ -412,8 +414,8 @@ func (m NodeManagerModel) renderStatusBar() string {
 	} else {
 		helpLine += "↑/↓ 选择 │ Enter 查看 │ / 搜索 │ r 刷新 │ ? 帮助"
 	}
-	if len(helpLine) < barWidth {
-		helpLine += strings.Repeat(" ", barWidth-len(helpLine))
+	if helpWidth := runewidth.StringWidth(helpLine); helpWidth < barWidth {
+		helpLine += strings.Repeat(" ", barWidth-helpWidth)
 	}
 
 	topBorder := StatusBarStyle.Render("┌" + strings.Repeat("─", barWidth) + "┐")

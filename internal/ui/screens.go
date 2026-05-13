@@ -343,11 +343,23 @@ func (m WizardModel) renderSelectablePage(header, body, footer string, selectedI
 	return renderSelectablePage(m.viewportState, int(m.screen), m.baseViewportSize, header, m.feedback, body, footer, selectedIndex)
 }
 
-func lineCount(s string) int {
+func lineCount(s string, width int) int {
 	if s == "" {
 		return 0
 	}
-	return strings.Count(s, "\n") + 1
+	if width <= 0 {
+		return strings.Count(s, "\n") + 1
+	}
+	count := 0
+	for _, rawLine := range strings.Split(s, "\n") {
+		dw := runewidth.StringWidth(rawLine)
+		if dw == 0 {
+			count++
+			continue
+		}
+		count += (dw + width - 1) / width
+	}
+	return count
 }
 
 func formatKV(label, value string, width int) string {

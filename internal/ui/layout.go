@@ -121,7 +121,7 @@ func renderCardWithViewport(state viewportState, screenID int, baseViewportSize 
 	headerBlock := HeaderStyle.Render(header)
 	feedbackBlock := feedbackBlock(feedback, innerWidth)
 	footerBlock := HelpStyle.Render(footer)
-	chromeHeight := lineCount(headerBlock) + lineCount(feedbackBlock) + lineCount(footerBlock) + 2
+	chromeHeight := lineCount(headerBlock, innerWidth) + lineCount(feedbackBlock, innerWidth) + lineCount(footerBlock, innerWidth) + 2
 	contentHeight := max(minViewportContentHeight, innerHeight-chromeHeight)
 	vp.Height = contentHeight
 	vp.SetContent(body)
@@ -191,9 +191,9 @@ func handleQuitConfirm(key string, quitConfirm *bool) (quit bool, cancel bool) {
 }
 
 func cardChromeHeight(header string, feedback pageFeedbackState, footer string, extraLines int) int {
-	h := lineCount(HeaderStyle.Render(header))
-	h += lineCount(feedbackBlock(feedback, 0))
-	h += lineCount(HelpStyle.Render(footer))
+	h := lineCount(HeaderStyle.Render(header), 0)
+	h += lineCount(feedbackBlock(feedback, 0), 0)
+	h += lineCount(HelpStyle.Render(footer), 0)
 	h += 2
 	h += extraLines
 	return h
