@@ -45,7 +45,7 @@ func TestBackupFile(t *testing.T) {
 }
 
 func TestBackupFileNoExist(t *testing.T) {
-	backupPath, err := BackupFile("/nonexistent/file.yaml")
+	backupPath, err := BackupFile(filepath.Join(t.TempDir(), "nonexistent.yaml"))
 	if err != nil {
 		t.Fatalf("BackupFile should not error for nonexistent file: %v", err)
 	}

@@ -60,7 +60,7 @@ func GetGitHubMirrorURL(originalURL string) string {
 	if customMirror := os.Getenv("CLASHCTL_GITHUB_MIRROR"); customMirror != "" {
 		mirror := strings.TrimRight(customMirror, "/")
 		if _, err := netsec.ValidateRemoteHTTPURL(mirror, netsec.URLValidationOptions{
-			ResolveHost: true,
+			ResolveHost: false,
 			Timeout:     5 * time.Second,
 		}); err == nil {
 			if strings.HasPrefix(originalURL, "https://github.com/") || strings.HasPrefix(originalURL, "https://api.github.com/") {
